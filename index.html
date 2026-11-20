@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Scan Barcode → QR Code</title>
+
+  <!-- PWA & Mobile App Meta -->
+  <meta name="theme-color" content="#0f62fe" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Scan2QR" />
+  <link
+    id="apple-touch-icon"
+    rel="apple-touch-icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230f62fe'/%3E%3Crect x='34' y='44' width='124' height='40' rx='6' fill='%23ffffff'/%3E%3Crect x='46' y='108' width='100' height='44' rx='10' fill='%23ffffff'/%3E%3Crect x='64' y='118' width='24' height='24' rx='4' fill='%230f62fe'/%3E%3Crect x='104' y='118' width='24' height='24' rx='4' fill='%230f62fe'/%3E%3C/svg%3E"
+  />
+  <link id="pwa-manifest" rel="manifest" href="" />
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #0f62fe;
+      --primary-hover: #0353e9;
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #161616;
+      --muted: #525252;
+      --border: #e0e0e0;
+      --success: #198038;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 440px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .header-text h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .header-text p {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    #install-btn {
+      display: none;
+      background: var(--success);
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+
+    #install-btn:hover {
+      background: #14632b;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+    }
+
+    #reader {
+      width: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      min-height: 220px;
+    }
+
+    .manual-input {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .manual-input input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    .manual-input input:focus {
+      border-color: var(--primary);
+    }
+
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    button.secondary {
+      background: #e0e0e0;
+      color: #161616;
+    }
+
+    button.secondary:hover {
+      background: #c6c6c6;
+    }
+
+    .result-area {
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 99px;
+      background: #e5f6ff;
+      color: #0043ce;
+      margin-bottom: 8px;
+    }
+
+    .badge.ready {
+      background: #defbe6;
+      color: var(--success);
+    }
+
+    #decoded-text {
+      font-size: 1.1rem;
+      font-weight: 700;
+      word-break: break-all;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border: 1px dashed var(--border);
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #qrcode-wrapper {
+      margin: 16px auto;
+      padding: 14px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 248px;
+      min-height: 248px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-text">
+        <h1>Scan Barcode → QR Code</h1>
+        <p>Kamera 1D barcode atau scanner fisik</p>
+      </div>
+      <button id="install-btn" type="button" onclick="installApp()">Install App</button>
+    </header>
+
+    <!-- Area Kamera & Input Scanner Fisik -->
+    <div class="card">
+      <div id="reader"></div>
+      <div class="manual-input">
+        <input
+          type="text"
+          id="scanner-input"
+          placeholder="Ketik / tembak scanner fisik..."
+          autocomplete="off"
+        />
+        <button type="button" onclick="handleManualSubmit()">Buat QR</button>
+      </div>
+    </div>
+
+    <!-- Area Hasil QR Code -->
+    <div class="card result-area">
+      <span id="status-badge" class="badge">Menunggu Scan...</span>
+      <div id="decoded-text">-</div>
+      <div id="qrcode-wrapper">
+        <span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" onclick="copyText()">Salin Teks</button>
+        <button type="button" class="secondary" onclick="downloadQR()">Simpan QR</button>
+        <button type="button" onclick="resetScan()">Scan Baru</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const qrWrapper = document.getElementById("qrcode-wrapper");
+    const decodedTextEl = document.getElementById("decoded-text");
+    const statusBadge = document.getElementById("status-badge");
+    const scannerInput = document.getElementById("scanner-input");
+    const installBtn = document.getElementById("install-btn");
+
+    let lastScanned = "";
+    let deferredPrompt = null;
+
+    // 1. Pasang Web App Manifest secara dinamis agar cukup 1 file index.html
+    const iconSvgData =
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230f62fe'/%3E%3Crect x='88' y='118' width='336' height='108' rx='16' fill='%23ffffff'/%3E%3Crect x='120' y='288' width='272' height='118' rx='24' fill='%23ffffff'/%3E%3Crect x='168' y='314' width='64' height='64' rx='10' fill='%230f62fe'/%3E%3Crect x='280' y='314' width='64' height='64' rx='10' fill='%230f62fe'/%3E%3C/svg%3E";
+
+    const manifestData = {
+      name: "Scan Barcode ke QR Code",
+      short_name: "Scan2QR",
+      description: "Scan barcode 1D dan otomatis tampilkan QR Code",
+      start_url: "./",
+      scope: "./",
+      display: "standalone",
+      background_color: "#f4f6f9",
+      theme_color: "#0f62fe",
+      icons: [
+        {
+          src: iconSvgData,
+          sizes: "512x512",
+          type: "image/svg+xml",
+          purpose: "any maskable"
+        }
+      ]
+    };
+
+    const manifestBlob = new Blob([JSON.stringify(manifestData)], {
+      type: "application/manifest+json"
+    });
+    document.getElementById("pwa-manifest").href = URL.createObjectURL(manifestBlob);
+
+    // 2. Tangkap event instalasi PWA (Android / Chrome / Edge)
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = "inline-block";
+    });
+
+    async function installApp() {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.style.display = "none";
+    }
+
+    window.addEventListener("appinstalled", () => {
+      installBtn.style.display = "none";
+    });
+
+    // 3. Registrasi Service Worker ringan
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        const swCode = `
+          self.addEventListener("install", () => self.skipWaiting());
+          self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+          self.addEventListener("fetch", (event) => {
+            event.respondWith(
+              fetch(event.request).catch(() => caches.match(event.request))
+            );
+          });
+        `;
+        const swBlob = new Blob([swCode], { type: "application/javascript" });
+        const swUrl = URL.createObjectURL(swBlob);
+        navigator.serviceWorker.register(swUrl).catch(() => {});
+      });
+    }
+
+    // 4. Bunyi beep singkat saat scan berhasil
+    function playBeep() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.12);
+      } catch (e) {}
+    }
+
+    function generateQR(text) {
+      const cleanText = text.trim();
+      if (!cleanText || cleanText === lastScanned) return;
+
+      lastScanned = cleanText;
+      playBeep();
+
+      decodedTextEl.textContent = cleanText;
+      statusBadge.textContent = "QR Code Siap Scan";
+      statusBadge.classList.add("ready");
+
+      qrWrapper.innerHTML = "";
+      new QRCode(qrWrapper, {
+        text: cleanText,
+        width: 220,
+        height: 220,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    function handleManualSubmit() {
+      if (scannerInput.value.trim() !== "") {
+        lastScanned = "";
+        generateQR(scannerInput.value);
+        scannerInput.value = "";
+        scannerInput.focus();
+      }
+    }
+
+    scannerInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleManualSubmit();
+      }
+    });
+
+    function copyText() {
+      if (!lastScanned) return;
+      navigator.clipboard.writeText(lastScanned);
+      statusBadge.textContent = "Teks Tersalin!";
+      setTimeout(() => {
+        statusBadge.textContent = "QR Code Siap Scan";
+      }, 1500);
+    }
+
+    function downloadQR() {
+      const img = qrWrapper.querySelector("img");
+      const canvas = qrWrapper.querySelector("canvas");
+      const dataUrl = img ? img.src : canvas ? canvas.toDataURL("image/png") : null;
+      if (!dataUrl) return;
+
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `QR_${lastScanned}.png`;
+      link.click();
+    }
+
+    function resetScan() {
+      lastScanned = "";
+      decodedTextEl.textContent = "-";
+      statusBadge.textContent = "Menunggu Scan...";
+      statusBadge.classList.remove("ready");
+      qrWrapper.innerHTML =
+        '<span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>';
+      scannerInput.value = "";
+    }
+
+    // 5. Inisialisasi Kamera Scanner (dioptimalkan untuk barcode 1D persegi panjang)
+    const html5QrCode = new Html5Qrcode("reader");
+    const config = {
+      fps: 15,
+      qrbox: { width: 290, height: 110 },
+      aspectRatio: 1.5
+    };
+
+    html5QrCode
+      .start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          generateQR(decodedText);
+        },
+        () => {}
+      )
+      .catch(() => {
+        document.getElementById("reader").innerHTML =
+          `<div style="color:#fff; padding:24px; text-align:center; font-size:0.9rem;">
+            Kamera tidak aktif atau membutuhkan akses HTTPS.<br/>Gunakan kolom input di bawah untuk mengetik / scanner fisik.
+          </div>`;
+      });
+  </script>
+</body>
+</html>
