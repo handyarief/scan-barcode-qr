@@ -118,9 +118,10 @@ header {
   display: block;
 }
 
-/* Sembunyikan kotak bawaan html5-qrcode agar memakai panduan mode kita */
+/* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
 #reader img[alt="Info icon"],
-#reader__dashboard_section {
+#reader__dashboard_section,
+#qr-shaded-region {
   display: none !important;
 }
 
@@ -132,7 +133,7 @@ header {
   right: 0;
   z-index: 5;
   padding: 18px 16px 24px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.48), rgba(0, 0, 0, 0));
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
   pointer-events: auto;
 }
 
@@ -180,7 +181,7 @@ header {
   display: none;
 }
 
-/* Panduan Area Scan per Mode */
+/* Panduan Area Scan per Mode: bagian dalam selalu clear/transparan, bagian luar agak gelap */
 .scan-guide {
   position: absolute;
   top: 50%;
@@ -188,33 +189,85 @@ header {
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 3;
-  transition: width 0.22s ease, height 0.22s ease, border-radius 0.22s ease, background 0.22s ease;
+  background: transparent;
+  transition: width 0.22s ease, height 0.22s ease, border-radius 0.22s ease, box-shadow 0.22s ease;
+}
+
+.guide-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: rgba(255, 255, 255, 0.92);
+  border-style: solid;
+  border-width: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.corner-tl {
+  top: -2px;
+  left: -2px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 4px;
+}
+
+.corner-tr {
+  top: -2px;
+  right: -2px;
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 4px;
+}
+
+.corner-bl {
+  bottom: -2px;
+  left: -2px;
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 4px;
+}
+
+.corner-br {
+  bottom: -2px;
+  right: -2px;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 4px;
 }
 
 .scanner-viewport.mode-full .scan-guide {
-  width: 0;
-  height: 0;
+  width: 100%;
+  height: 100%;
   border: none;
   background: transparent;
   box-shadow: none;
 }
 
 .scanner-viewport.mode-square .scan-guide {
-  width: 176px;
-  height: 176px;
-  border: none;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
+  width: 220px;
+  height: 220px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+}
+
+.scanner-viewport.mode-square .guide-corner {
+  opacity: 1;
 }
 
 .scanner-viewport.mode-bar .scan-guide {
-  width: calc(100% - 76px);
-  height: 82px;
-  border: none;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
+  width: calc(100% - 56px);
+  height: 110px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+}
+
+.scanner-viewport.mode-bar .guide-corner {
+  opacity: 1;
 }
 
 .scan-laser,
