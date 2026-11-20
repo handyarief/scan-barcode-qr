@@ -27,6 +27,7 @@
       --muted: #525252;
       --border: #e0e0e0;
       --success: #198038;
+      --flash-active: #f59e0b;
     }
 
     * {
@@ -112,7 +113,49 @@
       border-radius: 10px;
       overflow: hidden;
       background: #000;
-      min-height: 220px;
+      min-height: 240px;
+    }
+
+    .camera-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    #flash-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: #393939;
+      color: #fff;
+      padding: 8px 12px;
+      font-size: 0.84rem;
+      border-radius: 8px;
+      width: 100%;
+    }
+
+    #flash-btn:hover:not(:disabled) {
+      background: #262626;
+    }
+
+    #flash-btn.active {
+      background: var(--flash-active);
+      color: #161616;
+    }
+
+    #flash-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #flash-status {
+      font-size: 0.76rem;
+      color: var(--muted);
+      margin-top: 6px;
+      text-align: center;
     }
 
     .manual-input {
@@ -146,7 +189,7 @@
       transition: background 0.15s;
     }
 
-    button:hover {
+    button:hover:not(:disabled) {
       background: var(--primary-hover);
     }
 
@@ -155,7 +198,7 @@
       color: #161616;
     }
 
-    button.secondary:hover {
+    button.secondary:hover:not(:disabled) {
       background: #c6c6c6;
     }
 
@@ -230,6 +273,15 @@
     <!-- Area Kamera & Input Scanner Fisik -->
     <div class="card">
       <div id="reader"></div>
+
+      <div class="camera-controls">
+        <button id="flash-btn" type="button" onclick="toggleFlash()" disabled>
+          <span id="flash-icon">⚡</span>
+          <span id="flash-label">Flash: Mati</span>
+        </button>
+      </div>
+      <div id="flash-status">Menyiapkan kamera &amp; lampu flash...</div>
+
       <div class="manual-input">
         <input
           type="text"
@@ -262,9 +314,15 @@
     const statusBadge = document.getElementById("status-badge");
     const scannerInput = document.getElementById("scanner-input");
     const installBtn = document.getElementById("install-btn");
+    const flashBtn = document.getElementById("flash-btn");
+    const flashLabel = document.getElementById("flash-label");
+    const flashStatus = document.getElementById("flash-status");
 
     let lastScanned = "";
     let deferredPrompt = null;
+    let isFlashOn = false;
+    let isFlashSupported = false;
+    let isCameraRunning = false;
 
     // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
     const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -429,20 +487,58 @@
         Html5QrcodeSupportedFormats.ITF,
         Html5QrcodeSupportedFormats.CODABAR
       ],
-      useBarCodeDetectorIfSupported: true,
+      useBarCodeDetectorIfSupported: false,
       verbose: false
     });
 
     const config = {
-      fps: 20,
-      qrbox: { width: 280, height: 70 },
-      aspectRatio: 1.0,
+      fps: 24,
+      qrbox: { width: 310, height: 110 },
+      aspectRatio: 1.333333,
       videoConstraints: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
       }
     };
+
+    function detectFlashCapability() {
+      try {
+        const capabilities = html5QrCode.getRunningTrackCapabilities();
+        if (capabilities && capabilities.torch) {
+          isFlashSupported = true;
+          flashBtn.disabled = false;
+          flashStatus.textContent = "Flash tersedia — ketuk tombol untuk menyalakan.";
+        } else {
+          isFlashSupported = false;
+          flashBtn.disabled = true;
+          flashStatus.textContent = "Flash tidak didukung di kamera/browser ini.";
+        }
+      } catch (err) {
+        isFlashSupported = false;
+        flashBtn.disabled = true;
+        flashStatus.textContent = "Status flash tidak dapat dideteksi.";
+      }
+    }
+
+    async function toggleFlash() {
+      if (!isCameraRunning || !isFlashSupported) return;
+
+      const nextState = !isFlashOn;
+      try {
+        await html5QrCode.applyVideoConstraints({
+          advanced: [{ torch: nextState }]
+        });
+        isFlashOn = nextState;
+        flashBtn.classList.toggle("active", isFlashOn);
+        flashLabel.textContent = isFlashOn ? "Flash: Nyala" : "Flash: Mati";
+        flashStatus.textContent = isFlashOn
+          ? "Cahaya flash aktif untuk menerangi barcode."
+          : "Cahaya flash dimatikan.";
+      } catch (err) {
+        flashStatus.textContent = "Gagal mengubah status flash di perangkat ini.";
+      }
+    }
 
     html5QrCode
       .start(
@@ -453,7 +549,14 @@
         },
         () => {}
       )
+      .then(() => {
+        isCameraRunning = true;
+        setTimeout(detectFlashCapability, 350);
+      })
       .catch(() => {
+        isCameraRunning = false;
+        flashBtn.disabled = true;
+        flashStatus.textContent = "Kamera tidak aktif.";
         document.getElementById("reader").innerHTML =
           `<div style="color:#fff; padding:24px; text-align:center; font-size:0.9rem;">
             Kamera tidak aktif atau membutuhkan akses HTTPS.<br/>Gunakan kolom input di bawah untuk mengetik / scanner fisik.
