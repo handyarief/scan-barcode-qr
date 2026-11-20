@@ -136,12 +136,11 @@
     </div>
 
     <div class="sheet-header-row">
-      <span id="sheet-scanned-count" class="sheet-count-title">Scanned (1)</span>
+      <span id="sheet-scanned-count" class="sheet-count-title">Scanned</span>
       <button type="button" id="completed-btn" class="completed-btn" onclick="completeScan()">Completed</button>
     </div>
 
     <div class="sheet-detail-card">
-      <button type="button" class="sheet-clear-btn" onclick="dismissScanSheet()" aria-label="Hapus hasil scan" title="Hapus">✕</button>
       <div class="sheet-detail-row">
         <span class="sheet-label">Barcode:</span>
         <span id="sheet-barcode-value" class="sheet-value">-</span>
@@ -150,8 +149,8 @@
         <span class="sheet-label">Format:</span>
         <span id="sheet-format-value" class="sheet-value">-</span>
       </div>
-      <div class="sheet-detail-row">
-        <span class="sheet-label">Status:</span>
+      <div class="sheet-detail-row sheet-copy-row">
+        <button type="button" id="sheet-copy-btn" class="sheet-copy-btn" onclick="copyText()">Salin Teks</button>
         <span id="status-badge" class="badge">Menunggu Scan...</span>
       </div>
     </div>

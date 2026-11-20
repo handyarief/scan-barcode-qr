@@ -268,7 +268,7 @@ function startAutoZoomCycle() {
 function openScanSheet(cleanText, formatName) {
   scannedItemsCount += 1;
   if (sheetScannedCount) {
-    sheetScannedCount.textContent = `Scanned (${scannedItemsCount})`;
+    sheetScannedCount.textContent = "Scanned";
   }
   if (sheetBarcodeValue) {
     sheetBarcodeValue.textContent = cleanText;
@@ -367,7 +367,16 @@ function setupSheetSwipeDismiss() {
 
 setupSheetSwipeDismiss();
 
-function generateQR(text, formatName = "Manual / Scanner Fisik") {
+function detectScanFormatType(value) {
+  const trimmed = value.trim();
+  if (/^\d{8}$/.test(trimmed)) return "EAN_8";
+  if (/^\d{12}$/.test(trimmed)) return "UPC_A";
+  if (/^\d{13}$/.test(trimmed)) return "EAN_13";
+  if (/^https?:\/\//i.test(trimmed)) return "QR_CODE";
+  return `Scan ${currentScanMode.toUpperCase()}`;
+}
+
+function generateQR(text, formatName = "Scan") {
   const cleanText = text.trim();
   if (!cleanText || isScanLocked || cleanText === lastScanned) return;
 
@@ -378,7 +387,7 @@ function generateQR(text, formatName = "Manual / Scanner Fisik") {
 
   decodedTextEl.textContent = cleanText;
   formatInfoEl.textContent = `Format terbaca: ${formatName}`;
-  statusBadge.textContent = "Scan Selesai (Terkunci)";
+  statusBadge.textContent = "Tersedia Disalin";
   statusBadge.classList.add("ready");
 
   qrWrapper.innerHTML = "";
@@ -398,7 +407,8 @@ function handleManualSubmit() {
   if (scannerInput.value.trim() !== "") {
     isScanLocked = false;
     lastScanned = "";
-    generateQR(scannerInput.value, "Input Manual / Scanner Fisik");
+    const rawVal = scannerInput.value.trim();
+    generateQR(rawVal, detectScanFormatType(rawVal));
     scannerInput.value = "";
     scannerInput.focus();
   }
@@ -426,7 +436,7 @@ document.addEventListener("keydown", (e) => {
       physicalScannerBuffer = "";
       isScanLocked = false;
       lastScanned = "";
-      generateQR(code, "Scanner Fisik");
+      generateQR(code, detectScanFormatType(code));
     }
     physicalScannerBuffer = "";
     return;
@@ -446,7 +456,7 @@ function copyText() {
   navigator.clipboard.writeText(lastScanned);
   statusBadge.textContent = "Teks Tersalin!";
   setTimeout(() => {
-    statusBadge.textContent = isScanLocked ? "Scan Selesai (Terkunci)" : "QR Code Siap Scan";
+    statusBadge.textContent = isScanLocked ? "Tersedia Disalin" : "QR Code Siap Scan";
   }, 1500);
 }
 

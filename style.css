@@ -24,11 +24,16 @@ body {
   display: flex;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .container {
   width: 100%;
   max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 24px);
+  min-height: calc(100dvh - 24px);
 }
 
 header {
@@ -37,6 +42,7 @@ header {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .brand-group {
@@ -90,14 +96,19 @@ header {
 
 .scanner-card {
   padding: 0;
+  margin-bottom: 0;
   overflow: hidden;
   background: #0f172a;
   border-color: #0f172a;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .scanner-viewport {
   position: relative;
   width: 100%;
+  flex: 1;
   border-radius: 14px;
   overflow: hidden;
   background: #0f172a;
@@ -113,7 +124,8 @@ header {
 
 #reader video {
   width: 100% !important;
-  height: 520px !important;
+  height: 100% !important;
+  min-height: 520px;
   object-fit: cover !important;
   display: block;
 }
@@ -508,34 +520,31 @@ button.secondary:hover:not(:disabled) {
   padding-top: 4px;
 }
 
-.sheet-clear-btn {
-  position: absolute;
-  top: 4px;
-  right: 0;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 4px;
-  background: #b8bcc4;
-  color: #ffffff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sheet-clear-btn:hover:not(:disabled) {
-  background: #9ca3af;
-}
-
 .sheet-detail-row {
   display: flex;
   align-items: baseline;
   gap: 14px;
-  padding: 6px 28px 6px 0;
+  padding: 6px 0;
   font-size: 0.9rem;
+}
+
+.sheet-copy-row {
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+}
+
+.sheet-copy-btn {
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.sheet-copy-btn:hover:not(:disabled) {
+  background: #dbeafe;
 }
 
 .sheet-label {
