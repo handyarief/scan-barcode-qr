@@ -43,18 +43,11 @@
             <button type="button" class="mode-tab" data-mode="square" onclick="setScanMode('square')">Square</button>
             <button type="button" class="mode-tab" data-mode="bar" onclick="setScanMode('bar')">Bar</button>
           </div>
-          <div id="scan-instruction" class="scan-instruction">
-            Arahkan kamera ke barcode atau QR Code di seluruh layar
-          </div>
+          <div id="scan-instruction" class="scan-instruction"></div>
         </div>
 
-        <!-- Panduan Visual Area Scan & Garis Laser -->
-        <div id="scan-guide" class="scan-guide">
-          <div class="scan-laser"></div>
-        </div>
-
-        <!-- Indikator Auto Zoom -->
-        <div id="auto-zoom-badge" class="auto-zoom-badge">Auto Zoom: 1.0x</div>
+        <!-- Panduan Visual Area Scan -->
+        <div id="scan-guide" class="scan-guide"></div>
 
         <!-- Bar Bawah: 3 Ikon (Lampu/Flash, Zoom, Keyboard Manual) -->
         <div class="scan-bottom-controls">
@@ -143,6 +136,7 @@
     </div>
 
     <div class="sheet-detail-card">
+      <button type="button" class="sheet-clear-btn" onclick="dismissScanSheet()" aria-label="Hapus hasil scan" title="Hapus">✕</button>
       <div class="sheet-detail-row">
         <span class="sheet-label">Barcode:</span>
         <span id="sheet-barcode-value" class="sheet-value">-</span>

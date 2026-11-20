@@ -20,7 +20,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  padding: 16px;
+  padding: 12px;
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -36,7 +36,7 @@ header {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .brand-group {
@@ -47,8 +47,8 @@ header {
 }
 
 .app-logo {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   object-fit: cover;
   flex-shrink: 0;
@@ -56,13 +56,13 @@ header {
 }
 
 .header-text h1 {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text);
 }
 
 .header-text p {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--muted);
   margin-top: 2px;
 }
@@ -82,35 +82,38 @@ header {
 .card {
   background: var(--card);
   border-radius: 14px;
-  padding: 16px;
+  padding: 14px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   border: 1px solid var(--border);
 }
 
 .scanner-card {
-  padding: 12px;
+  padding: 0;
+  overflow: hidden;
+  background: #0f172a;
+  border-color: #0f172a;
 }
 
 .scanner-viewport {
   position: relative;
   width: 100%;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   background: #0f172a;
-  min-height: 440px;
+  min-height: 520px;
   cursor: pointer;
 }
 
 #reader {
   width: 100%;
   height: 100%;
-  min-height: 440px;
+  min-height: 520px;
 }
 
 #reader video {
   width: 100% !important;
-  height: 440px !important;
+  height: 520px !important;
   object-fit: cover !important;
   display: block;
 }
@@ -128,25 +131,27 @@ header {
   left: 0;
   right: 0;
   z-index: 5;
-  padding: 12px 12px 18px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0));
+  padding: 18px 16px 24px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.48), rgba(0, 0, 0, 0));
   pointer-events: auto;
 }
 
 .scan-mode-tabs {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 24px;
+  justify-content: space-around;
+  gap: 16px;
+  max-width: 340px;
+  margin: 0 auto;
 }
 
 .mode-tab {
   position: relative;
   background: transparent;
-  color: rgba(255, 255, 255, 0.78);
-  padding: 6px 4px;
-  font-size: 0.92rem;
-  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 6px 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
   border-radius: 0;
 }
 
@@ -157,26 +162,22 @@ header {
 
 .mode-tab.active {
   color: #ffffff;
+  font-weight: 600;
 }
 
 .mode-tab.active::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 6px;
+  right: 6px;
   bottom: 0;
-  height: 2.5px;
+  height: 2px;
   border-radius: 2px;
   background: #ffffff;
 }
 
 .scan-instruction {
-  margin-top: 8px;
-  text-align: center;
-  font-size: 0.76rem;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
-  pointer-events: none;
+  display: none;
 }
 
 /* Panduan Area Scan per Mode */
@@ -187,104 +188,70 @@ header {
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 3;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.42);
-  transition: width 0.24s ease, height 0.24s ease, border-radius 0.24s ease, border-color 0.2s ease;
+  transition: width 0.22s ease, height 0.22s ease, border-radius 0.22s ease, background 0.22s ease;
 }
 
 .scanner-viewport.mode-full .scan-guide {
-  width: calc(100% - 24px);
-  height: calc(100% - 124px);
-  border: 2px dashed rgba(255, 255, 255, 0.55);
-  border-radius: 14px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.16);
+  width: 0;
+  height: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .scanner-viewport.mode-square .scan-guide {
   width: 176px;
   height: 176px;
-  border: 2.5px solid #ffffff;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
 }
 
 .scanner-viewport.mode-bar .scan-guide {
-  width: calc(100% - 56px);
+  width: calc(100% - 76px);
   height: 82px;
-  border: 2.5px solid #ffffff;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
 }
 
-.scan-laser {
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 50%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #38bdf8, transparent);
-  box-shadow: 0 0 8px #38bdf8;
-  animation: laserSweep 2.2s ease-in-out infinite;
-}
-
-@keyframes laserSweep {
-  0%, 100% {
-    top: 18%;
-    opacity: 0.5;
-  }
-  50% {
-    top: 82%;
-    opacity: 1;
-  }
-}
-
-.scanner-viewport.refocusing .scan-guide {
-  border-color: var(--primary);
-}
-
+.scan-laser,
 .auto-zoom-badge {
-  position: absolute;
-  top: 78px;
-  right: 12px;
-  z-index: 5;
-  background: rgba(15, 23, 42, 0.72);
-  color: #ffffff;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 4px 9px;
-  border-radius: 99px;
-  pointer-events: none;
+  display: none;
 }
 
 /* Bar Bawah: 3 Ikon (Lampu, Zoom, Keyboard Manual) */
 .scan-bottom-controls {
   position: absolute;
-  bottom: 16px;
+  bottom: 22px;
   left: 0;
   right: 0;
   z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 20px;
+  padding: 0 18px;
   pointer-events: none;
 }
 
 .icon-circle-btn {
   pointer-events: auto;
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 50%;
-  background: rgba(30, 41, 59, 0.76);
+  background: rgba(55, 65, 81, 0.72);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .icon-circle-btn:hover:not(:disabled) {
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(31, 41, 55, 0.88);
 }
 
 .icon-circle-btn.active {
@@ -307,7 +274,7 @@ header {
   display: none;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
+  margin: 10px 12px 0;
   padding: 8px 10px;
   background: #f8f9fa;
   border-radius: 8px;
@@ -339,16 +306,13 @@ header {
 }
 
 #flash-status {
-  font-size: 0.76rem;
-  color: var(--muted);
-  margin-top: 8px;
-  text-align: center;
+  display: none;
 }
 
 .manual-input {
   display: none;
   gap: 8px;
-  margin-top: 10px;
+  margin: 10px 12px 12px;
 }
 
 .manual-input.open {
@@ -362,6 +326,7 @@ header {
   border-radius: 8px;
   font-size: 0.95rem;
   outline: none;
+  background: #ffffff;
 }
 
 .manual-input input:focus {
@@ -397,7 +362,7 @@ button.secondary:hover:not(:disabled) {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.25);
   z-index: 20;
   opacity: 0;
   pointer-events: none;
@@ -417,11 +382,11 @@ button.secondary:hover:not(:disabled) {
   margin: 0 auto;
   max-width: 480px;
   background: #ffffff;
-  border-top-left-radius: 18px;
-  border-top-right-radius: 18px;
-  padding: 6px 18px 22px;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding: 4px 18px 22px;
   z-index: 25;
-  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.14);
   transform: translateY(100%);
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   touch-action: none;
@@ -440,13 +405,13 @@ button.secondary:hover:not(:disabled) {
   justify-content: center;
   align-items: center;
   padding-top: 2px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .sheet-arrow-btn {
   background: transparent;
-  color: #64748b;
-  padding: 4px 18px;
+  color: #9ca3af;
+  padding: 2px 18px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -454,8 +419,8 @@ button.secondary:hover:not(:disabled) {
 }
 
 .sheet-arrow-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  color: var(--text);
+  background: #f3f4f6;
+  color: #4b5563;
 }
 
 .sheet-header-row {
@@ -463,47 +428,73 @@ button.secondary:hover:not(:disabled) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .sheet-count-title {
   font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--primary);
+  font-weight: 600;
+  color: #2563eb;
 }
 
 .completed-btn {
-  background: var(--primary);
+  background: #2563eb;
   color: #ffffff;
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-size: 0.88rem;
-  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.completed-btn:hover:not(:disabled) {
+  background: #1d4ed8;
 }
 
 .sheet-detail-card {
-  border-top: 1px solid #f1f5f9;
-  padding-top: 10px;
+  position: relative;
+  padding-top: 4px;
+}
+
+.sheet-clear-btn {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  background: #b8bcc4;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sheet-clear-btn:hover:not(:disabled) {
+  background: #9ca3af;
 }
 
 .sheet-detail-row {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: 14px;
-  padding: 7px 0;
+  padding: 6px 28px 6px 0;
   font-size: 0.9rem;
 }
 
 .sheet-label {
   min-width: 78px;
-  color: #64748b;
-  font-weight: 500;
+  color: #9ca3af;
+  font-weight: 400;
 }
 
 .sheet-value {
   flex: 1;
-  color: var(--primary);
-  font-weight: 600;
+  color: #2563eb;
+  font-weight: 500;
   word-break: break-all;
 }
 
@@ -511,15 +502,15 @@ button.secondary:hover:not(:disabled) {
   display: inline-block;
   font-size: 0.75rem;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 99px;
-  background: #e5f6ff;
-  color: #0043ce;
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .badge.ready {
-  background: #defbe6;
-  color: var(--success);
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 /* Tampilan Kode QR Kotak Full Screen (Muncul dari bawah setelah klik Completed) */

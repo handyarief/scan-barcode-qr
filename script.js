@@ -180,13 +180,7 @@ function setScanMode(mode) {
   });
 
   if (scanInstruction) {
-    if (mode === "square") {
-      scanInstruction.textContent = "Posisikan QR Code atau barcode kotak di dalam area persegi";
-    } else if (mode === "bar") {
-      scanInstruction.textContent = "Sejajarkan barcode 1D memanjang di dalam area bar";
-    } else {
-      scanInstruction.textContent = "Arahkan kamera ke barcode atau QR Code di seluruh layar";
-    }
+    scanInstruction.textContent = "";
   }
 
   triggerAutoFocus(true);
