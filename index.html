@@ -31,53 +31,156 @@
       <button id="install-btn" type="button" onclick="installApp()">Install App</button>
     </header>
 
-    <!-- Area Kamera & Input Scanner Fisik -->
-    <div class="card">
-      <div id="scanner-viewport" class="scanner-viewport" title="Ketuk layar kamera untuk fokus ulang">
+    <!-- Area Kamera & Kontrol Pemindai -->
+    <div class="card scanner-card">
+      <div id="scanner-viewport" class="scanner-viewport mode-full" title="Ketuk layar kamera untuk fokus ulang">
         <div id="reader"></div>
-        <div class="scan-guide"></div>
+
+        <!-- Bar Atas: 3 Mode Scan (Full, Square, Bar) -->
+        <div class="scan-top-overlay">
+          <div class="scan-mode-tabs" role="tablist" aria-label="Mode Area Scan">
+            <button type="button" class="mode-tab active" data-mode="full" onclick="setScanMode('full')">Full</button>
+            <button type="button" class="mode-tab" data-mode="square" onclick="setScanMode('square')">Square</button>
+            <button type="button" class="mode-tab" data-mode="bar" onclick="setScanMode('bar')">Bar</button>
+          </div>
+          <div id="scan-instruction" class="scan-instruction">
+            Arahkan kamera ke barcode atau QR Code di seluruh layar
+          </div>
+        </div>
+
+        <!-- Panduan Visual Area Scan & Garis Laser -->
+        <div id="scan-guide" class="scan-guide">
+          <div class="scan-laser"></div>
+        </div>
+
+        <!-- Indikator Auto Zoom -->
+        <div id="auto-zoom-badge" class="auto-zoom-badge">Auto Zoom: 1.0x</div>
+
+        <!-- Bar Bawah: 3 Ikon (Lampu/Flash, Zoom, Keyboard Manual) -->
+        <div class="scan-bottom-controls">
+          <button
+            id="flash-btn"
+            type="button"
+            class="icon-circle-btn"
+            onclick="toggleFlash()"
+            disabled
+            aria-label="Lampu Flash"
+            title="Lampu Flash"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M7 2h10v3l-2 3v12a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V8L7 5V2zm5 9a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
+            </svg>
+          </button>
+
+          <button
+            id="zoom-toggle-btn"
+            type="button"
+            class="icon-circle-btn"
+            onclick="toggleZoomPanel()"
+            aria-label="Pengaturan Zoom"
+            title="Zoom Kamera"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <line x1="11" y1="8" x2="11" y2="14"></line>
+              <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+          </button>
+
+          <button
+            id="keyboard-toggle-btn"
+            type="button"
+            class="icon-circle-btn"
+            onclick="toggleManualPanel()"
+            aria-label="Ketik Manual"
+            title="Ketik Manual / Scanner Fisik"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm1 3v2h2V8H5zm3 0v2h2V8H8zm3 0v2h2V8h-2zm3 0v2h2V8h-2zm3 0v2h2V8h-2zM5 11v2h2v-2H5zm3 0v2h2v-2H8zm3 0v2h2v-2h-2zm3 0v2h2v-2h-2zm3 0v2h2v-2h-2zM7 14v2h10v-2H7z"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
+      <!-- Panel Slider Zoom (Muncul saat ikon Zoom ditekan) -->
       <div id="zoom-box" class="zoom-control">
         <span>Zoom:</span>
         <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" />
         <span id="zoom-value">1.0x</span>
+        <button type="button" id="auto-zoom-btn" class="mini-pill-btn active" onclick="toggleAutoZoom()">Auto</button>
       </div>
 
-      <div class="camera-controls">
-        <button id="flash-btn" type="button" onclick="toggleFlash()" disabled>
-          <span id="flash-icon">⚡</span>
-          <span id="flash-label">Flash: Mati</span>
-        </button>
-      </div>
       <div id="flash-status">Menyiapkan kamera &amp; lampu flash...</div>
 
-      <div class="manual-input">
+      <!-- Panel Input Manual / Scanner Fisik (Muncul saat ikon Keyboard ditekan atau saat scanner fisik mengetik) -->
+      <div id="manual-panel" class="manual-input">
         <input
           type="text"
           id="scanner-input"
-          placeholder="Ketik / tembak scanner fisik..."
+          placeholder="Ketik manual atau tembak scanner fisik..."
           autocomplete="off"
         />
         <button type="button" onclick="handleManualSubmit()">Buat QR</button>
       </div>
     </div>
+  </div>
 
-    <!-- Area Hasil QR Code -->
-    <div class="card result-area">
-      <span id="status-badge" class="badge">Menunggu Scan...</span>
-      <div id="format-info">Format: -</div>
-      <div id="decoded-text">-</div>
-      <div id="qrcode-wrapper">
-        <span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>
+  <!-- Bottom Sheet Hasil Scan (Muncul dari bawah saat tertangkap scan) -->
+  <div id="scan-sheet-backdrop" class="sheet-backdrop" onclick="dismissScanSheet()"></div>
+  <section id="scan-result-sheet" class="scan-result-sheet" aria-live="polite">
+    <div id="sheet-drag-handle" class="sheet-drag-area" title="Swipe ke bawah atau ketuk panah untuk menutup">
+      <button type="button" id="sheet-dismiss-btn" class="sheet-arrow-btn" onclick="dismissScanSheet()" aria-label="Tutup hasil scan">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sheet-header-row">
+      <span id="sheet-scanned-count" class="sheet-count-title">Scanned (1)</span>
+      <button type="button" id="completed-btn" class="completed-btn" onclick="completeScan()">Completed</button>
+    </div>
+
+    <div class="sheet-detail-card">
+      <div class="sheet-detail-row">
+        <span class="sheet-label">Barcode:</span>
+        <span id="sheet-barcode-value" class="sheet-value">-</span>
       </div>
-      <div class="actions">
-        <button type="button" class="secondary" onclick="copyText()">Salin Teks</button>
-        <button type="button" class="secondary" onclick="downloadQR()">Simpan QR</button>
-        <button type="button" onclick="resetScan()">Scan Baru</button>
+      <div class="sheet-detail-row">
+        <span class="sheet-label">Format:</span>
+        <span id="sheet-format-value" class="sheet-value">-</span>
+      </div>
+      <div class="sheet-detail-row">
+        <span class="sheet-label">Status:</span>
+        <span id="status-badge" class="badge">Menunggu Scan...</span>
       </div>
     </div>
-  </div>
+  </section>
+
+  <!-- Tampilan Kode QR Kotak Full Screen (Muncul dari bawah setelah klik Completed) -->
+  <section id="fullscreen-qr-modal" class="fullscreen-qr-modal" aria-hidden="true">
+    <div class="fullscreen-qr-header">
+      <div>
+        <h2>Kode QR Hasil Scan</h2>
+        <div id="format-info">Format: -</div>
+      </div>
+      <button type="button" class="close-fullscreen-btn" onclick="resetScan()" aria-label="Tutup Full Screen">✕</button>
+    </div>
+
+    <div class="fullscreen-qr-body">
+      <div id="qrcode-wrapper" class="fullscreen-qr-box">
+        <span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>
+      </div>
+      <div id="decoded-text">-</div>
+    </div>
+
+    <div class="actions fullscreen-actions">
+      <button type="button" class="secondary" onclick="copyText()">Salin Teks</button>
+      <button type="button" class="secondary" onclick="downloadQR()">Simpan QR</button>
+      <button type="button" onclick="resetScan()">Scan Baru</button>
+    </div>
+  </section>
 
   <script src="./script.js"></script>
 </body>

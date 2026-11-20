@@ -5,12 +5,25 @@ const statusBadge = document.getElementById("status-badge");
 const scannerInput = document.getElementById("scanner-input");
 const installBtn = document.getElementById("install-btn");
 const flashBtn = document.getElementById("flash-btn");
-const flashLabel = document.getElementById("flash-label");
 const flashStatus = document.getElementById("flash-status");
 const zoomBox = document.getElementById("zoom-box");
 const zoomSlider = document.getElementById("zoom-slider");
 const zoomValue = document.getElementById("zoom-value");
 const scannerViewport = document.getElementById("scanner-viewport");
+const scanGuide = document.getElementById("scan-guide");
+const scanInstruction = document.getElementById("scan-instruction");
+const autoZoomBadge = document.getElementById("auto-zoom-badge");
+const zoomToggleBtn = document.getElementById("zoom-toggle-btn");
+const autoZoomBtn = document.getElementById("auto-zoom-btn");
+const keyboardToggleBtn = document.getElementById("keyboard-toggle-btn");
+const manualPanel = document.getElementById("manual-panel");
+const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
+const scanResultSheet = document.getElementById("scan-result-sheet");
+const sheetDragHandle = document.getElementById("sheet-drag-handle");
+const sheetScannedCount = document.getElementById("sheet-scanned-count");
+const sheetBarcodeValue = document.getElementById("sheet-barcode-value");
+const sheetFormatValue = document.getElementById("sheet-format-value");
+const fullscreenQrModal = document.getElementById("fullscreen-qr-modal");
 
 let lastScanned = "";
 let deferredPrompt = null;
@@ -22,6 +35,17 @@ let audioCtx = null;
 let autoFocusTimer = null;
 let isFocusSupported = false;
 let currentZoom = 1;
+let minZoomSupported = 1;
+let maxZoomSupported = 5;
+let isZoomSupported = false;
+let currentScanMode = "full";
+let isAutoZoomEnabled = true;
+let autoZoomTimer = null;
+let autoZoomDirection = 1;
+let scannedItemsCount = 0;
+let sheetStartY = 0;
+let sheetCurrentDeltaY = 0;
+let isSheetDragging = false;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -139,6 +163,216 @@ function resumeCameraForNextScan() {
   } catch (err) {}
 }
 
+// Pengaturan Mode Scan (Full, Square, Bar)
+function setScanMode(mode) {
+  const validModes = ["full", "square", "bar"];
+  if (!validModes.includes(mode)) return;
+  currentScanMode = mode;
+
+  if (scannerViewport) {
+    scannerViewport.classList.remove("mode-full", "mode-square", "mode-bar");
+    scannerViewport.classList.add(`mode-${mode}`);
+  }
+
+  const tabs = document.querySelectorAll(".mode-tab");
+  tabs.forEach((tab) => {
+    tab.classList.toggle("active", tab.getAttribute("data-mode") === mode);
+  });
+
+  if (scanInstruction) {
+    if (mode === "square") {
+      scanInstruction.textContent = "Posisikan QR Code atau barcode kotak di dalam area persegi";
+    } else if (mode === "bar") {
+      scanInstruction.textContent = "Sejajarkan barcode 1D memanjang di dalam area bar";
+    } else {
+      scanInstruction.textContent = "Arahkan kamera ke barcode atau QR Code di seluruh layar";
+    }
+  }
+
+  triggerAutoFocus(true);
+}
+
+function toggleZoomPanel() {
+  if (!zoomBox || !zoomToggleBtn) return;
+  const isOpen = zoomBox.classList.toggle("open");
+  zoomToggleBtn.classList.toggle("active", isOpen);
+}
+
+function toggleManualPanel() {
+  if (!manualPanel || !keyboardToggleBtn) return;
+  const isOpen = manualPanel.classList.toggle("open");
+  keyboardToggleBtn.classList.toggle("active", isOpen);
+  if (isOpen && scannerInput) {
+    scannerInput.focus();
+  }
+}
+
+function toggleAutoZoom() {
+  isAutoZoomEnabled = !isAutoZoomEnabled;
+  if (autoZoomBtn) {
+    autoZoomBtn.classList.toggle("active", isAutoZoomEnabled);
+  }
+  updateAutoZoomBadge();
+}
+
+function updateAutoZoomBadge() {
+  if (!autoZoomBadge) return;
+  autoZoomBadge.textContent = isAutoZoomEnabled
+    ? `Auto Zoom: ${currentZoom.toFixed(1)}x`
+    : `Manual Zoom: ${currentZoom.toFixed(1)}x`;
+}
+
+async function applyCameraZoomValue(val) {
+  const clamped = Math.max(minZoomSupported, Math.min(maxZoomSupported, Number(val)));
+  currentZoom = clamped;
+
+  if (zoomSlider) {
+    zoomSlider.value = clamped;
+  }
+  if (zoomValue) {
+    zoomValue.textContent = `${clamped.toFixed(1)}x`;
+  }
+  updateAutoZoomBadge();
+
+  if (!isCameraRunning || !isZoomSupported) return;
+  try {
+    const advancedConstraint = { zoom: clamped };
+    if (isFocusSupported) {
+      advancedConstraint.focusMode = "continuous";
+    }
+    await html5QrCode.applyVideoConstraints({
+      advanced: [advancedConstraint]
+    });
+  } catch (err) {}
+}
+
+function startAutoZoomCycle() {
+  if (autoZoomTimer) {
+    clearInterval(autoZoomTimer);
+  }
+  autoZoomTimer = setInterval(() => {
+    if (!isAutoZoomEnabled || !isCameraRunning || isScanLocked || document.visibilityState !== "visible") {
+      return;
+    }
+    const targetMax = Math.min(maxZoomSupported, Math.max(minZoomSupported + 0.4, 2.4));
+    const step = 0.2;
+    let nextZoom = currentZoom + step * autoZoomDirection;
+
+    if (nextZoom >= targetMax) {
+      nextZoom = targetMax;
+      autoZoomDirection = -1;
+    } else if (nextZoom <= minZoomSupported) {
+      nextZoom = minZoomSupported;
+      autoZoomDirection = 1;
+    }
+
+    applyCameraZoomValue(Number(nextZoom.toFixed(1)));
+  }, 1600);
+}
+
+// Kontrol Bottom Sheet Hasil Scan & Full Screen QR
+function openScanSheet(cleanText, formatName) {
+  scannedItemsCount += 1;
+  if (sheetScannedCount) {
+    sheetScannedCount.textContent = `Scanned (${scannedItemsCount})`;
+  }
+  if (sheetBarcodeValue) {
+    sheetBarcodeValue.textContent = cleanText;
+  }
+  if (sheetFormatValue) {
+    sheetFormatValue.textContent = formatName;
+  }
+  if (scanResultSheet) {
+    scanResultSheet.style.transform = "";
+    scanResultSheet.classList.add("open");
+  }
+  if (sheetBackdrop) {
+    sheetBackdrop.classList.add("open");
+  }
+}
+
+function closeScanSheetOnly() {
+  if (scanResultSheet) {
+    scanResultSheet.style.transform = "";
+    scanResultSheet.classList.remove("open", "dragging");
+  }
+  if (sheetBackdrop) {
+    sheetBackdrop.classList.remove("open");
+  }
+}
+
+function dismissScanSheet() {
+  closeScanSheetOnly();
+  isScanLocked = false;
+  lastScanned = "";
+  statusBadge.textContent = "Scan Dibatalkan";
+  statusBadge.classList.remove("ready");
+  resumeCameraForNextScan();
+}
+
+function completeScan() {
+  if (!lastScanned) return;
+  closeScanSheetOnly();
+  if (fullscreenQrModal) {
+    fullscreenQrModal.classList.add("open");
+    fullscreenQrModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeFullscreenQrModal() {
+  if (fullscreenQrModal) {
+    fullscreenQrModal.classList.remove("open");
+    fullscreenQrModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function setupSheetSwipeDismiss() {
+  if (!scanResultSheet) return;
+  const swipeTarget = sheetDragHandle || scanResultSheet;
+
+  swipeTarget.addEventListener(
+    "touchstart",
+    (e) => {
+      if (!scanResultSheet.classList.contains("open") || !e.touches || e.touches.length === 0) return;
+      isSheetDragging = true;
+      sheetStartY = e.touches[0].clientY;
+      sheetCurrentDeltaY = 0;
+      scanResultSheet.classList.add("dragging");
+    },
+    { passive: true }
+  );
+
+  swipeTarget.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!isSheetDragging || !e.touches || e.touches.length === 0) return;
+      const deltaY = e.touches[0].clientY - sheetStartY;
+      if (deltaY > 0) {
+        sheetCurrentDeltaY = deltaY;
+        scanResultSheet.style.transform = `translateY(${deltaY}px)`;
+      }
+    },
+    { passive: true }
+  );
+
+  const finishSwipe = () => {
+    if (!isSheetDragging) return;
+    isSheetDragging = false;
+    scanResultSheet.classList.remove("dragging");
+    if (sheetCurrentDeltaY > 75) {
+      dismissScanSheet();
+    } else {
+      scanResultSheet.style.transform = "";
+    }
+    sheetCurrentDeltaY = 0;
+  };
+
+  swipeTarget.addEventListener("touchend", finishSwipe);
+  swipeTarget.addEventListener("touchcancel", finishSwipe);
+}
+
+setupSheetSwipeDismiss();
+
 function generateQR(text, formatName = "Manual / Scanner Fisik") {
   const cleanText = text.trim();
   if (!cleanText || isScanLocked || cleanText === lastScanned) return;
@@ -156,12 +390,14 @@ function generateQR(text, formatName = "Manual / Scanner Fisik") {
   qrWrapper.innerHTML = "";
   new QRCode(qrWrapper, {
     text: cleanText,
-    width: 220,
-    height: 220,
+    width: 260,
+    height: 260,
     colorDark: "#000000",
     colorLight: "#ffffff",
     correctLevel: QRCode.CorrectLevel.M
   });
+
+  openScanSheet(cleanText, formatName);
 }
 
 function handleManualSubmit() {
@@ -178,6 +414,36 @@ scannerInput.addEventListener("keydown", function (e) {
   if (e.key === "Enter") {
     e.preventDefault();
     handleManualSubmit();
+  }
+});
+
+// Deteksi otomatis input cepat dari scanner fisik (barcode scanner keyboard wedge)
+let physicalScannerBuffer = "";
+let physicalScannerTimer = null;
+
+document.addEventListener("keydown", (e) => {
+  const activeTag = document.activeElement ? document.activeElement.tagName : "";
+  if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  if (e.key === "Enter") {
+    if (physicalScannerBuffer.length >= 3) {
+      const code = physicalScannerBuffer;
+      physicalScannerBuffer = "";
+      isScanLocked = false;
+      lastScanned = "";
+      generateQR(code, "Scanner Fisik");
+    }
+    physicalScannerBuffer = "";
+    return;
+  }
+
+  if (e.key.length === 1) {
+    physicalScannerBuffer += e.key;
+    clearTimeout(physicalScannerTimer);
+    physicalScannerTimer = setTimeout(() => {
+      physicalScannerBuffer = "";
+    }, 120);
   }
 });
 
@@ -203,6 +469,8 @@ function downloadQR() {
 }
 
 function resetScan() {
+  closeFullscreenQrModal();
+  closeScanSheetOnly();
   isScanLocked = false;
   lastScanned = "";
   decodedTextEl.textContent = "-";
@@ -250,11 +518,20 @@ const html5QrCode = new Html5Qrcode("reader", {
 });
 
 function calculateDynamicQrBox(viewfinderWidth, viewfinderHeight) {
-  const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-  const boxSize = Math.max(160, Math.floor(minEdge * 0.78));
+  if (currentScanMode === "square") {
+    const size = Math.max(150, Math.min(viewfinderWidth - 48, viewfinderHeight - 140, 220));
+    return { width: size, height: size };
+  }
+
+  if (currentScanMode === "bar") {
+    const width = Math.max(180, Math.min(viewfinderWidth - 56, 340));
+    const height = Math.max(64, Math.min(110, Math.floor(viewfinderHeight * 0.22)));
+    return { width, height };
+  }
+
   return {
-    width: Math.min(viewfinderWidth - 24, Math.max(boxSize, Math.floor(viewfinderWidth * 0.84))),
-    height: Math.min(viewfinderHeight - 24, boxSize)
+    width: Math.max(160, Math.floor(viewfinderWidth * 0.88)),
+    height: Math.max(160, Math.floor(viewfinderHeight * 0.72))
   };
 }
 
@@ -327,7 +604,14 @@ function startAutoFocusLoop() {
 }
 
 if (scannerViewport) {
-  scannerViewport.addEventListener("click", () => {
+  scannerViewport.addEventListener("click", (e) => {
+    if (
+      e.target.closest(".scan-top-overlay") ||
+      e.target.closest(".scan-bottom-controls") ||
+      e.target.closest("#scan-guide")
+    ) {
+      return;
+    }
     triggerAutoFocus(true);
   });
 }
@@ -352,8 +636,8 @@ function setupCameraCapabilities() {
       isFlashSupported = true;
       flashBtn.disabled = false;
       flashStatus.textContent = isFocusSupported
-        ? "Auto fokus aktif • Flash tersedia — ketuk untuk menyalakan."
-        : "Flash tersedia — ketuk tombol untuk menyalakan.";
+        ? "Auto fokus aktif • Flash tersedia — ketuk ikon lampu untuk menyalakan."
+        : "Flash tersedia — ketuk ikon lampu untuk menyalakan.";
     } else {
       isFlashSupported = false;
       flashBtn.disabled = true;
@@ -362,34 +646,33 @@ function setupCameraCapabilities() {
         : "Flash tidak didukung di kamera/browser ini.";
     }
 
-    // Cek Zoom Kamera (sangat berguna untuk barcode/Data Matrix kecil)
+    // Cek Zoom Kamera & jalankan Auto Zoom In / Out
     if (capabilities && capabilities.zoom) {
-      const minZoom = capabilities.zoom.min || 1;
-      const maxZoom = Math.min(capabilities.zoom.max || 4, 5);
+      isZoomSupported = true;
+      minZoomSupported = capabilities.zoom.min || 1;
+      maxZoomSupported = Math.min(capabilities.zoom.max || 4, 5);
       const stepZoom = capabilities.zoom.step || 0.1;
 
-      zoomSlider.min = minZoom;
-      zoomSlider.max = maxZoom;
+      zoomSlider.min = minZoomSupported;
+      zoomSlider.max = maxZoomSupported;
       zoomSlider.step = stepZoom;
-      zoomSlider.value = minZoom;
-      currentZoom = Number(minZoom);
+      zoomSlider.value = minZoomSupported;
+      currentZoom = Number(minZoomSupported);
       zoomValue.textContent = `${currentZoom.toFixed(1)}x`;
-      zoomBox.style.display = "flex";
+      updateAutoZoomBadge();
 
       zoomSlider.addEventListener("input", async (e) => {
-        const val = parseFloat(e.target.value);
-        currentZoom = val;
-        zoomValue.textContent = `${val.toFixed(1)}x`;
-        try {
-          const advancedConstraint = { zoom: val };
-          if (isFocusSupported) {
-            advancedConstraint.focusMode = "continuous";
-          }
-          await html5QrCode.applyVideoConstraints({
-            advanced: [advancedConstraint]
-          });
-        } catch (err) {}
+        isAutoZoomEnabled = false;
+        if (autoZoomBtn) {
+          autoZoomBtn.classList.remove("active");
+        }
+        await applyCameraZoomValue(parseFloat(e.target.value));
       });
+
+      startAutoZoomCycle();
+    } else {
+      isZoomSupported = false;
+      updateAutoZoomBadge();
     }
   } catch (err) {
     isFlashSupported = false;
@@ -412,7 +695,6 @@ async function toggleFlash() {
     });
     isFlashOn = nextState;
     flashBtn.classList.toggle("active", isFlashOn);
-    flashLabel.textContent = isFlashOn ? "Flash: Nyala" : "Flash: Mati";
     flashStatus.textContent = isFlashOn
       ? "Cahaya flash aktif untuk menerangi barcode."
       : "Cahaya flash dimatikan.";
@@ -445,6 +727,6 @@ html5QrCode
     flashStatus.textContent = "Kamera tidak aktif.";
     document.getElementById("reader").innerHTML =
       `<div style="color:#fff; padding:24px; text-align:center; font-size:0.9rem;">
-        Kamera tidak aktif atau membutuhkan akses HTTPS.<br/>Gunakan kolom input di bawah untuk mengetik / scanner fisik.
+        Kamera tidak aktif atau membutuhkan akses HTTPS.<br/>Gunakan ikon keyboard di bawah untuk mengetik / scanner fisik.
       </div>`;
   });
