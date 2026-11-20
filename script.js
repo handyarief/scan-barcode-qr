@@ -1,4 +1,4 @@
-lconst qrWrapper = document.getElementById("qrcode-wrapper");
+const qrWrapper = document.getElementById("qrcode-wrapper");
 const decodedTextEl = document.getElementById("decoded-text");
 const formatInfoEl = document.getElementById("format-info");
 const statusBadge = document.getElementById("status-badge");
