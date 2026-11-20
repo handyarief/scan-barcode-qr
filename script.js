@@ -1,4 +1,4 @@
-const qrWrapper = document.getElementById("qrcode-wrapper");
+lconst qrWrapper = document.getElementById("qrcode-wrapper");
 const decodedTextEl = document.getElementById("decoded-text");
 const formatInfoEl = document.getElementById("format-info");
 const statusBadge = document.getElementById("status-badge");
@@ -39,13 +39,17 @@ let minZoomSupported = 1;
 let maxZoomSupported = 5;
 let isZoomSupported = false;
 let currentScanMode = "full";
-let isAutoZoomEnabled = true;
+let isAutoZoomEnabled = false;
 let autoZoomTimer = null;
 let autoZoomDirection = 1;
 let scannedItemsCount = 0;
 let sheetStartY = 0;
 let sheetCurrentDeltaY = 0;
 let isSheetDragging = false;
+let candidateScanText = "";
+let candidateScanFormat = "";
+let candidateScanHits = 0;
+let candidateScanExpiresAt = 0;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -144,6 +148,13 @@ function playBeep() {
   } catch (e) {}
 }
 
+function resetCandidateScan() {
+  candidateScanText = "";
+  candidateScanFormat = "";
+  candidateScanHits = 0;
+  candidateScanExpiresAt = 0;
+}
+
 function pauseCameraForSingleScan() {
   if (!isCameraRunning) return;
   try {
@@ -155,6 +166,7 @@ function pauseCameraForSingleScan() {
 
 function resumeCameraForNextScan() {
   if (!isCameraRunning) return;
+  resetCandidateScan();
   try {
     if (typeof html5QrCode.resume === "function") {
       html5QrCode.resume();
@@ -168,6 +180,7 @@ function setScanMode(mode) {
   const validModes = ["full", "square", "bar"];
   if (!validModes.includes(mode)) return;
   currentScanMode = mode;
+  resetCandidateScan();
 
   if (scannerViewport) {
     scannerViewport.classList.remove("mode-full", "mode-square", "mode-bar");
@@ -248,7 +261,7 @@ function startAutoZoomCycle() {
     if (!isAutoZoomEnabled || !isCameraRunning || isScanLocked || document.visibilityState !== "visible") {
       return;
     }
-    const targetMax = Math.min(maxZoomSupported, Math.max(minZoomSupported + 0.4, 2.4));
+    const targetMax = Math.min(maxZoomSupported, Math.max(minZoomSupported + 0.4, 2.0));
     const step = 0.2;
     let nextZoom = currentZoom + step * autoZoomDirection;
 
@@ -261,7 +274,7 @@ function startAutoZoomCycle() {
     }
 
     applyCameraZoomValue(Number(nextZoom.toFixed(1)));
-  }, 1600);
+  }, 2400);
 }
 
 // Kontrol Bottom Sheet Hasil Scan & Full Screen QR
@@ -299,6 +312,7 @@ function dismissScanSheet() {
   closeScanSheetOnly();
   isScanLocked = false;
   lastScanned = "";
+  resetCandidateScan();
   statusBadge.textContent = "Scan Dibatalkan";
   statusBadge.classList.remove("ready");
   resumeCameraForNextScan();
@@ -382,6 +396,7 @@ function generateQR(text, formatName = "Scan") {
 
   isScanLocked = true;
   lastScanned = cleanText;
+  resetCandidateScan();
   pauseCameraForSingleScan();
   triggerScanFeedback();
 
@@ -407,6 +422,7 @@ function handleManualSubmit() {
   if (scannerInput.value.trim() !== "") {
     isScanLocked = false;
     lastScanned = "";
+    resetCandidateScan();
     const rawVal = scannerInput.value.trim();
     generateQR(rawVal, detectScanFormatType(rawVal));
     scannerInput.value = "";
@@ -436,6 +452,7 @@ document.addEventListener("keydown", (e) => {
       physicalScannerBuffer = "";
       isScanLocked = false;
       lastScanned = "";
+      resetCandidateScan();
       generateQR(code, detectScanFormatType(code));
     }
     physicalScannerBuffer = "";
@@ -477,6 +494,7 @@ function resetScan() {
   closeScanSheetOnly();
   isScanLocked = false;
   lastScanned = "";
+  resetCandidateScan();
   decodedTextEl.textContent = "-";
   formatInfoEl.textContent = "Format: -";
   statusBadge.textContent = "Menunggu Scan...";
@@ -514,28 +532,25 @@ function getSupportedFormats() {
 
 const html5QrCode = new Html5Qrcode("reader", {
   formatsToSupport: getSupportedFormats(),
-  useBarCodeDetectorIfSupported: true,
-  experimentalFeatures: {
-    useBarCodeDetectorIfSupported: true
-  },
+  useBarCodeDetectorIfSupported: false,
   verbose: false
 });
 
 function calculateDynamicQrBox(viewfinderWidth, viewfinderHeight) {
   if (currentScanMode === "square") {
-    const size = Math.max(150, Math.min(viewfinderWidth - 48, viewfinderHeight - 140, 220));
+    const size = Math.max(160, Math.min(viewfinderWidth - 48, viewfinderHeight - 140, 236));
     return { width: size, height: size };
   }
 
   if (currentScanMode === "bar") {
-    const width = Math.max(180, Math.min(viewfinderWidth - 56, 340));
-    const height = Math.max(64, Math.min(110, Math.floor(viewfinderHeight * 0.22)));
+    const width = Math.max(190, Math.min(viewfinderWidth - 48, 360));
+    const height = Math.max(76, Math.min(126, Math.floor(viewfinderHeight * 0.24)));
     return { width, height };
   }
 
   return {
-    width: Math.max(160, Math.floor(viewfinderWidth * 0.88)),
-    height: Math.max(160, Math.floor(viewfinderHeight * 0.72))
+    width: Math.max(180, Math.floor(viewfinderWidth * 0.9)),
+    height: Math.max(180, Math.floor(viewfinderHeight * 0.78))
   };
 }
 
@@ -604,7 +619,7 @@ function startAutoFocusLoop() {
     if (isCameraRunning && !isScanLocked && document.visibilityState === "visible") {
       triggerAutoFocus(false);
     }
-  }, 2500);
+  }, 2200);
 }
 
 if (scannerViewport) {
@@ -650,7 +665,7 @@ function setupCameraCapabilities() {
         : "Flash tidak didukung di kamera/browser ini.";
     }
 
-    // Cek Zoom Kamera & jalankan Auto Zoom In / Out
+    // Cek Zoom Kamera & siapkan kontrol Auto Zoom In / Out
     if (capabilities && capabilities.zoom) {
       isZoomSupported = true;
       minZoomSupported = capabilities.zoom.min || 1;
@@ -663,6 +678,9 @@ function setupCameraCapabilities() {
       zoomSlider.value = minZoomSupported;
       currentZoom = Number(minZoomSupported);
       zoomValue.textContent = `${currentZoom.toFixed(1)}x`;
+      if (autoZoomBtn) {
+        autoZoomBtn.classList.toggle("active", isAutoZoomEnabled);
+      }
       updateAutoZoomBadge();
 
       zoomSlider.addEventListener("input", async (e) => {
@@ -708,10 +726,45 @@ async function toggleFlash() {
   }
 }
 
+function getRequiredConfirmHits(fmt, cleanText) {
+  if (fmt === "QR_CODE" || fmt === "DATA_MATRIX" || fmt === "AZTEC" || fmt === "PDF_417") {
+    return 1;
+  }
+  if (fmt === "EAN_13" || fmt === "EAN_8" || fmt === "UPC_A" || fmt === "UPC_E") {
+    return 2;
+  }
+  if (cleanText.length <= 4) {
+    return 3;
+  }
+  return 2;
+}
+
 function onScanSuccess(decodedText, decodedResult) {
   if (isScanLocked) return;
+  const cleanText = String(decodedText || "").trim();
+  if (!cleanText) return;
+
   const fmt = decodedResult?.result?.format?.formatName || "Terdeteksi";
-  generateQR(decodedText, fmt);
+  const now = Date.now();
+
+  if (
+    candidateScanText === cleanText &&
+    candidateScanFormat === fmt &&
+    now <= candidateScanExpiresAt
+  ) {
+    candidateScanHits += 1;
+  } else {
+    candidateScanText = cleanText;
+    candidateScanFormat = fmt;
+    candidateScanHits = 1;
+  }
+
+  candidateScanExpiresAt = now + 700;
+
+  const requiredHits = getRequiredConfirmHits(fmt, cleanText);
+  if (candidateScanHits >= requiredHits) {
+    generateQR(cleanText, fmt);
+  }
 }
 
 html5QrCode
