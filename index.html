@@ -416,12 +416,32 @@
       scannerInput.value = "";
     }
 
-    // 5. Inisialisasi Kamera Scanner (dioptimalkan untuk barcode 1D persegi panjang)
-    const html5QrCode = new Html5Qrcode("reader");
+    // 5. Inisialisasi Kamera Scanner (dioptimalkan untuk barcode 1D)
+    const html5QrCode = new Html5Qrcode("reader", {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.CODE_93,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.CODABAR
+      ],
+      useBarCodeDetectorIfSupported: true,
+      verbose: false
+    });
+
     const config = {
-      fps: 15,
-      qrbox: { width: 290, height: 110 },
-      aspectRatio: 1.5
+      fps: 20,
+      qrbox: { width: 280, height: 70 },
+      aspectRatio: 1.0,
+      videoConstraints: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
     };
 
     html5QrCode
