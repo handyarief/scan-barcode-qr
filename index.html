@@ -382,6 +382,8 @@
     let isFlashOn = false;
     let isFlashSupported = false;
     let isCameraRunning = false;
+    let isScanLocked = false;
+    let audioCtx = null;
 
     // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
     const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -447,33 +449,69 @@
       });
     }
 
-    // 4. Bunyi beep singkat saat scan berhasil
+    // 4. Getar & bunyi beep singkat saat scan berhasil
+    function triggerScanFeedback() {
+      try {
+        if (navigator.vibrate) {
+          navigator.vibrate(140);
+        }
+      } catch (e) {}
+
+      playBeep();
+    }
+
     function playBeep() {
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        const ctx = new AudioCtx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        if (!AudioCtx) return;
+        if (!audioCtx) {
+          audioCtx = new AudioCtx();
+        }
+        if (audioCtx.state === "suspended") {
+          audioCtx.resume().catch(() => {});
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
         osc.type = "sine";
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.14, audioCtx.currentTime);
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(audioCtx.destination);
         osc.start();
-        osc.stop(ctx.currentTime + 0.12);
+        osc.stop(audioCtx.currentTime + 0.14);
       } catch (e) {}
+    }
+
+    function pauseCameraForSingleScan() {
+      if (!isCameraRunning) return;
+      try {
+        if (typeof html5QrCode.pause === "function") {
+          html5QrCode.pause(true);
+        }
+      } catch (err) {}
+    }
+
+    function resumeCameraForNextScan() {
+      if (!isCameraRunning) return;
+      try {
+        if (typeof html5QrCode.resume === "function") {
+          html5QrCode.resume();
+        }
+      } catch (err) {}
     }
 
     function generateQR(text, formatName = "Manual / Scanner Fisik") {
       const cleanText = text.trim();
-      if (!cleanText || cleanText === lastScanned) return;
+      if (!cleanText || isScanLocked || cleanText === lastScanned) return;
 
+      isScanLocked = true;
       lastScanned = cleanText;
-      playBeep();
+      pauseCameraForSingleScan();
+      triggerScanFeedback();
 
       decodedTextEl.textContent = cleanText;
       formatInfoEl.textContent = `Format terbaca: ${formatName}`;
-      statusBadge.textContent = "QR Code Siap Scan";
+      statusBadge.textContent = "Scan Selesai (Terkunci)";
       statusBadge.classList.add("ready");
 
       qrWrapper.innerHTML = "";
@@ -489,6 +527,7 @@
 
     function handleManualSubmit() {
       if (scannerInput.value.trim() !== "") {
+        isScanLocked = false;
         lastScanned = "";
         generateQR(scannerInput.value, "Input Manual / Scanner Fisik");
         scannerInput.value = "";
@@ -508,7 +547,7 @@
       navigator.clipboard.writeText(lastScanned);
       statusBadge.textContent = "Teks Tersalin!";
       setTimeout(() => {
-        statusBadge.textContent = "QR Code Siap Scan";
+        statusBadge.textContent = isScanLocked ? "Scan Selesai (Terkunci)" : "QR Code Siap Scan";
       }, 1500);
     }
 
@@ -525,6 +564,7 @@
     }
 
     function resetScan() {
+      isScanLocked = false;
       lastScanned = "";
       decodedTextEl.textContent = "-";
       formatInfoEl.textContent = "Format: -";
@@ -533,9 +573,10 @@
       qrWrapper.innerHTML =
         '<span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>';
       scannerInput.value = "";
+      resumeCameraForNextScan();
     }
 
-    // 5. Inisialisasi Kamera Scanner (Mendukung 1D & 2D + Native BarcodeDetector)
+    // 5. Inisialisasi Kamera Scanner (Mendukung 1D & 2D)
     const html5QrCode = new Html5Qrcode("reader", {
       formatsToSupport: [
         Html5QrcodeSupportedFormats.QR_CODE,
@@ -552,19 +593,17 @@
         Html5QrcodeSupportedFormats.ITF,
         Html5QrcodeSupportedFormats.CODABAR
       ],
-      useBarCodeDetectorIfSupported: true,
+      useBarCodeDetectorIfSupported: false,
       verbose: false
     });
 
-    // Tanpa qrbox kaku agar seluruh layar kamera bisa menangkap kode 1D maupun 2D
     const config = {
       fps: 15,
       disableFlip: false,
       videoConstraints: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        focusMode: { ideal: "continuous" }
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
       }
     };
 
@@ -637,6 +676,7 @@
         { facingMode: "environment" },
         config,
         (decodedText, decodedResult) => {
+          if (isScanLocked) return;
           const fmt = decodedResult?.result?.format?.formatName || "Terdeteksi";
           generateQR(decodedText, fmt);
         },
