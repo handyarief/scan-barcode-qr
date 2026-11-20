@@ -108,12 +108,33 @@
       border: 1px solid var(--border);
     }
 
-    #reader {
+    .scanner-viewport {
+      position: relative;
       width: 100%;
       border-radius: 10px;
       overflow: hidden;
       background: #000;
-      min-height: 240px;
+      min-height: 260px;
+    }
+
+    #reader {
+      width: 100%;
+    }
+
+    #reader video {
+      width: 100% !important;
+      height: auto !important;
+      object-fit: cover !important;
+      display: block;
+    }
+
+    .scan-guide {
+      position: absolute;
+      inset: 14%;
+      border: 2px solid rgba(255, 255, 255, 0.65);
+      border-radius: 12px;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.22);
     }
 
     .camera-controls {
@@ -149,6 +170,24 @@
     #flash-btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+
+    .zoom-control {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 6px 10px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .zoom-control input[type="range"] {
+      flex: 1;
+      accent-color: var(--primary);
     }
 
     #flash-status {
@@ -222,6 +261,12 @@
       color: var(--success);
     }
 
+    #format-info {
+      font-size: 0.74rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
     #decoded-text {
       font-size: 1.1rem;
       font-weight: 700;
@@ -264,7 +309,7 @@
         <img src="./logo.png" alt="Logo Scan2QR" class="app-logo" />
         <div class="header-text">
           <h1>Scan Barcode → QR Code</h1>
-          <p>Kamera 1D barcode atau scanner fisik</p>
+          <p>Semua Barcode 1D/2D atau scanner fisik</p>
         </div>
       </div>
       <button id="install-btn" type="button" onclick="installApp()">Install App</button>
@@ -272,7 +317,16 @@
 
     <!-- Area Kamera & Input Scanner Fisik -->
     <div class="card">
-      <div id="reader"></div>
+      <div class="scanner-viewport">
+        <div id="reader"></div>
+        <div class="scan-guide"></div>
+      </div>
+
+      <div id="zoom-box" class="zoom-control">
+        <span>Zoom:</span>
+        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" />
+        <span id="zoom-value">1.0x</span>
+      </div>
 
       <div class="camera-controls">
         <button id="flash-btn" type="button" onclick="toggleFlash()" disabled>
@@ -296,6 +350,7 @@
     <!-- Area Hasil QR Code -->
     <div class="card result-area">
       <span id="status-badge" class="badge">Menunggu Scan...</span>
+      <div id="format-info">Format: -</div>
       <div id="decoded-text">-</div>
       <div id="qrcode-wrapper">
         <span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>
@@ -311,12 +366,16 @@
   <script>
     const qrWrapper = document.getElementById("qrcode-wrapper");
     const decodedTextEl = document.getElementById("decoded-text");
+    const formatInfoEl = document.getElementById("format-info");
     const statusBadge = document.getElementById("status-badge");
     const scannerInput = document.getElementById("scanner-input");
     const installBtn = document.getElementById("install-btn");
     const flashBtn = document.getElementById("flash-btn");
     const flashLabel = document.getElementById("flash-label");
     const flashStatus = document.getElementById("flash-status");
+    const zoomBox = document.getElementById("zoom-box");
+    const zoomSlider = document.getElementById("zoom-slider");
+    const zoomValue = document.getElementById("zoom-value");
 
     let lastScanned = "";
     let deferredPrompt = null;
@@ -330,7 +389,7 @@
     const manifestData = {
       name: "Scan Barcode ke QR Code",
       short_name: "Scan2QR",
-      description: "Scan barcode 1D dan otomatis tampilkan QR Code",
+      description: "Scan barcode 1D/2D dan otomatis tampilkan QR Code",
       start_url: "./",
       scope: "./",
       display: "standalone",
@@ -405,7 +464,7 @@
       } catch (e) {}
     }
 
-    function generateQR(text) {
+    function generateQR(text, formatName = "Manual / Scanner Fisik") {
       const cleanText = text.trim();
       if (!cleanText || cleanText === lastScanned) return;
 
@@ -413,6 +472,7 @@
       playBeep();
 
       decodedTextEl.textContent = cleanText;
+      formatInfoEl.textContent = `Format terbaca: ${formatName}`;
       statusBadge.textContent = "QR Code Siap Scan";
       statusBadge.classList.add("ready");
 
@@ -430,7 +490,7 @@
     function handleManualSubmit() {
       if (scannerInput.value.trim() !== "") {
         lastScanned = "";
-        generateQR(scannerInput.value);
+        generateQR(scannerInput.value, "Input Manual / Scanner Fisik");
         scannerInput.value = "";
         scannerInput.focus();
       }
@@ -467,6 +527,7 @@
     function resetScan() {
       lastScanned = "";
       decodedTextEl.textContent = "-";
+      formatInfoEl.textContent = "Format: -";
       statusBadge.textContent = "Menunggu Scan...";
       statusBadge.classList.remove("ready");
       qrWrapper.innerHTML =
@@ -474,9 +535,13 @@
       scannerInput.value = "";
     }
 
-    // 5. Inisialisasi Kamera Scanner (dioptimalkan untuk barcode 1D)
+    // 5. Inisialisasi Kamera Scanner (Mendukung 1D & 2D + Native BarcodeDetector)
     const html5QrCode = new Html5Qrcode("reader", {
       formatsToSupport: [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
+        Html5QrcodeSupportedFormats.AZTEC,
+        Html5QrcodeSupportedFormats.PDF_417,
         Html5QrcodeSupportedFormats.CODE_128,
         Html5QrcodeSupportedFormats.CODE_39,
         Html5QrcodeSupportedFormats.CODE_93,
@@ -487,24 +552,27 @@
         Html5QrcodeSupportedFormats.ITF,
         Html5QrcodeSupportedFormats.CODABAR
       ],
-      useBarCodeDetectorIfSupported: false,
+      useBarCodeDetectorIfSupported: true,
       verbose: false
     });
 
+    // Tanpa qrbox kaku agar seluruh layar kamera bisa menangkap kode 1D maupun 2D
     const config = {
-      fps: 24,
-      qrbox: { width: 310, height: 110 },
-      aspectRatio: 1.333333,
+      fps: 15,
+      disableFlip: false,
       videoConstraints: {
         facingMode: { ideal: "environment" },
         width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        height: { ideal: 1080 },
+        focusMode: { ideal: "continuous" }
       }
     };
 
-    function detectFlashCapability() {
+    function setupCameraCapabilities() {
       try {
         const capabilities = html5QrCode.getRunningTrackCapabilities();
+
+        // Cek Flash / Torch
         if (capabilities && capabilities.torch) {
           isFlashSupported = true;
           flashBtn.disabled = false;
@@ -513,6 +581,30 @@
           isFlashSupported = false;
           flashBtn.disabled = true;
           flashStatus.textContent = "Flash tidak didukung di kamera/browser ini.";
+        }
+
+        // Cek Zoom Kamera (sangat berguna untuk barcode/Data Matrix kecil)
+        if (capabilities && capabilities.zoom) {
+          const minZoom = capabilities.zoom.min || 1;
+          const maxZoom = Math.min(capabilities.zoom.max || 4, 5);
+          const stepZoom = capabilities.zoom.step || 0.1;
+
+          zoomSlider.min = minZoom;
+          zoomSlider.max = maxZoom;
+          zoomSlider.step = stepZoom;
+          zoomSlider.value = minZoom;
+          zoomValue.textContent = `${Number(minZoom).toFixed(1)}x`;
+          zoomBox.style.display = "flex";
+
+          zoomSlider.addEventListener("input", async (e) => {
+            const val = parseFloat(e.target.value);
+            zoomValue.textContent = `${val.toFixed(1)}x`;
+            try {
+              await html5QrCode.applyVideoConstraints({
+                advanced: [{ zoom: val }]
+              });
+            } catch (err) {}
+          });
         }
       } catch (err) {
         isFlashSupported = false;
@@ -544,14 +636,15 @@
       .start(
         { facingMode: "environment" },
         config,
-        (decodedText) => {
-          generateQR(decodedText);
+        (decodedText, decodedResult) => {
+          const fmt = decodedResult?.result?.format?.formatName || "Terdeteksi";
+          generateQR(decodedText, fmt);
         },
         () => {}
       )
       .then(() => {
         isCameraRunning = true;
-        setTimeout(detectFlashCapability, 350);
+        setTimeout(setupCameraCapabilities, 400);
       })
       .catch(() => {
         isCameraRunning = false;
