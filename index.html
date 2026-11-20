@@ -11,11 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Scan2QR" />
-  <link
-    id="apple-touch-icon"
-    rel="apple-touch-icon"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230f62fe'/%3E%3Crect x='34' y='44' width='124' height='40' rx='6' fill='%23ffffff'/%3E%3Crect x='46' y='108' width='100' height='44' rx='10' fill='%23ffffff'/%3E%3Crect x='64' y='118' width='24' height='24' rx='4' fill='%230f62fe'/%3E%3Crect x='104' y='118' width='24' height='24' rx='4' fill='%230f62fe'/%3E%3C/svg%3E"
-  />
+  <link id="apple-touch-icon" rel="apple-touch-icon" href="./logo.png" />
   <link id="pwa-manifest" rel="manifest" href="" />
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -60,6 +56,22 @@
       justify-content: space-between;
       gap: 10px;
       margin-bottom: 14px;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .app-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
     }
 
     .header-text h1 {
@@ -205,9 +217,12 @@
 <body>
   <div class="container">
     <header>
-      <div class="header-text">
-        <h1>Scan Barcode → QR Code</h1>
-        <p>Kamera 1D barcode atau scanner fisik</p>
+      <div class="brand-group">
+        <img src="./logo.png" alt="Logo Scan2QR" class="app-logo" />
+        <div class="header-text">
+          <h1>Scan Barcode → QR Code</h1>
+          <p>Kamera 1D barcode atau scanner fisik</p>
+        </div>
       </div>
       <button id="install-btn" type="button" onclick="installApp()">Install App</button>
     </header>
@@ -251,9 +266,8 @@
     let lastScanned = "";
     let deferredPrompt = null;
 
-    // 1. Pasang Web App Manifest secara dinamis agar cukup 1 file index.html
-    const iconSvgData =
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230f62fe'/%3E%3Crect x='88' y='118' width='336' height='108' rx='16' fill='%23ffffff'/%3E%3Crect x='120' y='288' width='272' height='118' rx='24' fill='%23ffffff'/%3E%3Crect x='168' y='314' width='64' height='64' rx='10' fill='%230f62fe'/%3E%3Crect x='280' y='314' width='64' height='64' rx='10' fill='%230f62fe'/%3E%3C/svg%3E";
+    // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
+    const logoUrl = new URL("./logo.png", window.location.href).href;
 
     const manifestData = {
       name: "Scan Barcode ke QR Code",
@@ -266,9 +280,9 @@
       theme_color: "#0f62fe",
       icons: [
         {
-          src: iconSvgData,
+          src: logoUrl,
           sizes: "512x512",
-          type: "image/svg+xml",
+          type: "image/png",
           purpose: "any maskable"
         }
       ]
