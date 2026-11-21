@@ -390,42 +390,41 @@ header {
   touch-action: none;
 }
 
-/* Kotak Angka / Huruf di Atas Foto (Presisi Rapat per Kata/Angka) */
+/* Kotak Angka / Huruf di Atas Foto (Presisi Rapat & Bersih Ala Google Lens) */
 .ocr-word-box {
   position: absolute;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-word-box:hover {
-  background: rgba(37, 99, 235, 0.22);
-  border-color: rgba(96, 165, 250, 0.78);
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(96, 165, 250, 0.72);
 }
 
 /* Kotak Area Barcode Terpisah di Atas Foto */
 .ocr-barcode-box {
   position: absolute;
-  border-radius: 6px;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1.5px dashed rgba(125, 211, 252, 0.78);
+  border-radius: 5px;
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px solid rgba(125, 211, 252, 0.55);
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-barcode-box:hover {
-  background: rgba(37, 99, 235, 0.2);
-  border-color: rgba(96, 165, 250, 0.9);
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(96, 165, 250, 0.85);
 }
 
 .ocr-word-box.selected,
 .ocr-barcode-box.selected {
-  background: rgba(37, 99, 235, 0.36);
-  border: 1.5px solid rgba(96, 165, 250, 0.98);
-  border-style: solid;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.34);
+  border: 1.5px solid #60a5fa;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.28);
   z-index: 2;
 }
 
