@@ -50,6 +50,7 @@ let candidateScanText = "";
 let candidateScanFormat = "";
 let candidateScanHits = 0;
 let candidateScanExpiresAt = 0;
+let isZoomSliderBound = false;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -274,7 +275,7 @@ function startAutoZoomCycle() {
     }
 
     applyCameraZoomValue(Number(nextZoom.toFixed(1)));
-  }, 2400);
+  }, 3600);
 }
 
 // Kontrol Bottom Sheet Hasil Scan & Full Screen QR
@@ -507,7 +508,7 @@ function resetScan() {
 
 // 5. Inisialisasi Kamera Scanner (Mendukung Seluruh Format 1D & 2D + Auto Fokus Cepat)
 function getSupportedFormats() {
-  const f = Html5QrcodeSupportedFormats || {};
+  const f = typeof Html5QrcodeSupportedFormats !== "undefined" ? Html5QrcodeSupportedFormats : {};
   const list = [
     f.QR_CODE,
     f.AZTEC,
@@ -532,36 +533,36 @@ function getSupportedFormats() {
 
 const html5QrCode = new Html5Qrcode("reader", {
   formatsToSupport: getSupportedFormats(),
-  useBarCodeDetectorIfSupported: false,
+  useBarCodeDetectorIfSupported: true,
   verbose: false
 });
 
 function calculateDynamicQrBox(viewfinderWidth, viewfinderHeight) {
   if (currentScanMode === "square") {
-    const size = Math.max(160, Math.min(viewfinderWidth - 48, viewfinderHeight - 140, 236));
+    const size = Math.max(180, Math.min(viewfinderWidth - 32, viewfinderHeight - 120, 272));
     return { width: size, height: size };
   }
 
   if (currentScanMode === "bar") {
-    const width = Math.max(190, Math.min(viewfinderWidth - 48, 360));
-    const height = Math.max(76, Math.min(126, Math.floor(viewfinderHeight * 0.24)));
+    const width = Math.max(220, Math.min(viewfinderWidth - 24, 400));
+    const height = Math.max(116, Math.min(180, Math.floor(viewfinderHeight * 0.34)));
     return { width, height };
   }
 
   return {
-    width: Math.max(180, Math.floor(viewfinderWidth * 0.9)),
-    height: Math.max(180, Math.floor(viewfinderHeight * 0.78))
+    width: Math.max(200, Math.floor(viewfinderWidth * 0.94)),
+    height: Math.max(200, Math.floor(viewfinderHeight * 0.86))
   };
 }
 
 const config = {
-  fps: 25,
-  disableFlip: false,
+  fps: 15,
+  disableFlip: true,
   qrbox: calculateDynamicQrBox,
   videoConstraints: {
     facingMode: { ideal: "environment" },
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
     focusMode: { ideal: "continuous" }
   }
 };
@@ -619,7 +620,7 @@ function startAutoFocusLoop() {
     if (isCameraRunning && !isScanLocked && document.visibilityState === "visible") {
       triggerAutoFocus(false);
     }
-  }, 2200);
+  }, 4500);
 }
 
 if (scannerViewport) {
@@ -683,13 +684,16 @@ function setupCameraCapabilities() {
       }
       updateAutoZoomBadge();
 
-      zoomSlider.addEventListener("input", async (e) => {
-        isAutoZoomEnabled = false;
-        if (autoZoomBtn) {
-          autoZoomBtn.classList.remove("active");
-        }
-        await applyCameraZoomValue(parseFloat(e.target.value));
-      });
+      if (!isZoomSliderBound) {
+        isZoomSliderBound = true;
+        zoomSlider.addEventListener("input", async (e) => {
+          isAutoZoomEnabled = false;
+          if (autoZoomBtn) {
+            autoZoomBtn.classList.remove("active");
+          }
+          await applyCameraZoomValue(parseFloat(e.target.value));
+        });
+      }
 
       startAutoZoomCycle();
     } else {
@@ -727,16 +731,10 @@ async function toggleFlash() {
 }
 
 function getRequiredConfirmHits(fmt, cleanText) {
-  if (fmt === "QR_CODE" || fmt === "DATA_MATRIX" || fmt === "AZTEC" || fmt === "PDF_417") {
-    return 1;
-  }
-  if (fmt === "EAN_13" || fmt === "EAN_8" || fmt === "UPC_A" || fmt === "UPC_E") {
+  if (cleanText.length <= 3) {
     return 2;
   }
-  if (cleanText.length <= 4) {
-    return 3;
-  }
-  return 2;
+  return 1;
 }
 
 function onScanSuccess(decodedText, decodedResult) {
@@ -759,7 +757,7 @@ function onScanSuccess(decodedText, decodedResult) {
     candidateScanHits = 1;
   }
 
-  candidateScanExpiresAt = now + 700;
+  candidateScanExpiresAt = now + 1500;
 
   const requiredHits = getRequiredConfirmHits(fmt, cleanText);
   if (candidateScanHits >= requiredHits) {
