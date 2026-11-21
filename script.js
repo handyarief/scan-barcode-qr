@@ -20,10 +20,11 @@ const manualPanel = document.getElementById("manual-panel");
 const photoShutterBtn = document.getElementById("photo-shutter-btn");
 const photoCaptureInput = document.getElementById("photo-capture-input");
 const photoLensOverlay = document.getElementById("photo-lens-overlay");
+const photoLensStage = document.getElementById("photo-lens-stage");
 const capturedPhotoPreview = document.getElementById("captured-photo-preview");
+const photoOcrLayer = document.getElementById("photo-ocr-layer");
+const photoLensActionBar = document.getElementById("photo-lens-action-bar");
 const photoLensStatus = document.getElementById("photo-lens-status");
-const photoExtractedText = document.getElementById("photo-extracted-text");
-const photoTokenList = document.getElementById("photo-token-list");
 const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
 const scanResultSheet = document.getElementById("scan-result-sheet");
 const sheetDragHandle = document.getElementById("sheet-drag-handle");
@@ -58,8 +59,14 @@ let candidateScanFormat = "";
 let candidateScanHits = 0;
 let candidateScanExpiresAt = 0;
 let isZoomSliderBound = false;
-let selectedPhotoTokens = [];
 let ocrRunToken = 0;
+let ocrWordItems = [];
+let selectedOcrIndices = [];
+let ocrNaturalWidth = 0;
+let ocrNaturalHeight = 0;
+let isOcrDragging = false;
+let ocrDragStartIdx = -1;
+let ocrDragMoved = false;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -224,10 +231,27 @@ function toggleManualPanel() {
   }
 }
 
-// Fitur Foto Ala Google Lens: Foto -> Blok Biru Transparan -> Salin (kembali ke scan awal) / Buat Barkode (ke tampilan hasil seperti gambar 3)
-function setPhotoLensStatus(msg) {
-  if (photoLensStatus) {
-    photoLensStatus.textContent = msg;
+// Fitur Foto Ala Google Lens:
+// Klik Foto -> Langsung Tampil Foto + Ketuk/Blok Angka atau Huruf (Biru Transparan) -> Menu Mengambang "Salin" & "Buat Barkode"
+function setPhotoLensStatus(msg, hide = false) {
+  if (!photoLensStatus) return;
+  photoLensStatus.textContent = msg;
+  photoLensStatus.classList.toggle("hidden", Boolean(hide));
+}
+
+function clearPhotoLensState() {
+  ocrWordItems = [];
+  selectedOcrIndices = [];
+  ocrNaturalWidth = 0;
+  ocrNaturalHeight = 0;
+  isOcrDragging = false;
+  ocrDragStartIdx = -1;
+  ocrDragMoved = false;
+  if (photoOcrLayer) {
+    photoOcrLayer.innerHTML = "";
+  }
+  if (photoLensActionBar) {
+    photoLensActionBar.classList.remove("visible");
   }
 }
 
@@ -240,7 +264,7 @@ function openPhotoLensPanel() {
 
 function closePhotoLensPanel() {
   ocrRunToken += 1;
-  selectedPhotoTokens = [];
+  clearPhotoLensState();
   if (photoLensOverlay) {
     photoLensOverlay.classList.remove("open");
   }
@@ -262,81 +286,410 @@ function captureSnapshotFromVideo() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return "";
     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.9);
+    return canvas.toDataURL("image/jpeg", 0.92);
   } catch (err) {
     return "";
   }
 }
 
-function normalizeDetectedText(rawText) {
-  if (!rawText) return "";
-  return String(rawText)
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function loadImageElement(imageUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = imageUrl;
+  });
 }
 
-async function extractTextWithNativeDetector(imageUrl) {
-  if (!imageUrl || typeof window.TextDetector === "undefined") return "";
+function buildEnhancedCanvasForOcr(img) {
+  const width = img.naturalWidth || img.width;
+  const height = img.naturalHeight || img.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+
+  ctx.drawImage(img, 0, 0, width, height);
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const contrast = 1.28;
+    const intercept = 128 * (1 - contrast);
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      const enhanced = Math.max(0, Math.min(255, gray * contrast + intercept));
+      data[i] = enhanced;
+      data[i + 1] = enhanced;
+      data[i + 2] = enhanced;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  } catch (err) {}
+
+  return canvas;
+}
+
+function splitLineIntoWordBoxes(rawText, boxX, boxY, boxW, boxH) {
+  const cleanLine = String(rawText || "").replace(/[\r\n]+/g, " ");
+  if (!cleanLine.trim()) return [];
+  const totalLen = Math.max(1, cleanLine.length);
+  const results = [];
+  const regex = /\S+/g;
+  let match;
+
+  while ((match = regex.exec(cleanLine)) !== null) {
+    const word = match[0];
+    const startRatio = match.index / totalLen;
+    const endRatio = (match.index + word.length) / totalLen;
+    results.push({
+      text: word,
+      bbox: {
+        x0: boxX + boxW * startRatio,
+        y0: boxY,
+        x1: boxX + boxW * endRatio,
+        y1: boxY + boxH
+      }
+    });
+  }
+
+  return results;
+}
+
+async function detectWordBoxesWithNativeDetector(img) {
+  if (typeof window.TextDetector === "undefined") return [];
   try {
     const detector = new window.TextDetector();
-    const img = new Image();
-    img.src = imageUrl;
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
     const blocks = await detector.detect(img);
-    if (!Array.isArray(blocks) || blocks.length === 0) return "";
-    const parts = blocks
-      .map((item) => (item && item.rawValue ? normalizeDetectedText(item.rawValue) : ""))
-      .filter(Boolean);
-    return normalizeDetectedText(parts.join(" "));
+    if (!Array.isArray(blocks) || blocks.length === 0) return [];
+    const items = [];
+    blocks.forEach((block) => {
+      if (!block || !block.rawValue || !block.boundingBox) return;
+      const b = block.boundingBox;
+      const lines = String(block.rawValue).split(/\r?\n/).filter((l) => l.trim().length > 0);
+      const lineCount = Math.max(1, lines.length);
+      const lineHeight = b.height / lineCount;
+      lines.forEach((lineText, lineIdx) => {
+        const splitWords = splitLineIntoWordBoxes(
+          lineText,
+          b.x,
+          b.y + lineIdx * lineHeight,
+          b.width,
+          lineHeight
+        );
+        items.push(...splitWords);
+      });
+    });
+    return items;
   } catch (err) {
-    return "";
+    return [];
   }
 }
 
-async function extractTextWithTesseract(imageUrl) {
-  if (!imageUrl || typeof window.Tesseract === "undefined" || typeof window.Tesseract.recognize !== "function") {
-    return "";
+async function detectWordBoxesWithTesseract(canvas) {
+  if (typeof window.Tesseract === "undefined" || typeof window.Tesseract.recognize !== "function") {
+    return [];
   }
   try {
-    const result = await window.Tesseract.recognize(imageUrl, "eng", {
+    const result = await window.Tesseract.recognize(canvas, "eng", {
       logger: () => {}
     });
-    return normalizeDetectedText(result && result.data ? result.data.text : "");
+    const data = result && result.data ? result.data : null;
+    if (!data) return [];
+
+    let rawWords = Array.isArray(data.words) ? data.words : [];
+    if (rawWords.length === 0 && Array.isArray(data.lines)) {
+      rawWords = data.lines.flatMap((line) => (Array.isArray(line.words) ? line.words : []));
+    }
+
+    return rawWords
+      .filter((w) => w && w.bbox && String(w.text || "").trim().length > 0)
+      .map((w) => ({
+        text: String(w.text).trim(),
+        bbox: {
+          x0: Number(w.bbox.x0) || 0,
+          y0: Number(w.bbox.y0) || 0,
+          x1: Number(w.bbox.x1) || 0,
+          y1: Number(w.bbox.y1) || 0
+        }
+      }));
   } catch (err) {
-    return "";
+    return [];
   }
 }
 
-async function extractTextFromImageUrl(imageUrl) {
-  if (!imageUrl) return "";
-  const nativeText = await extractTextWithNativeDetector(imageUrl);
-  if (nativeText) {
-    return nativeText;
-  }
-  const ocrText = await extractTextWithTesseract(imageUrl);
-  return ocrText;
+function getRenderedImageMetrics() {
+  if (!photoLensStage || !ocrNaturalWidth || !ocrNaturalHeight) return null;
+  const stageRect = photoLensStage.getBoundingClientRect();
+  if (!stageRect.width || !stageRect.height) return null;
+
+  const scale = Math.min(stageRect.width / ocrNaturalWidth, stageRect.height / ocrNaturalHeight);
+  const renderedWidth = ocrNaturalWidth * scale;
+  const renderedHeight = ocrNaturalHeight * scale;
+  const offsetX = (stageRect.width - renderedWidth) / 2;
+  const offsetY = (stageRect.height - renderedHeight) / 2;
+
+  return {
+    stageWidth: stageRect.width,
+    stageHeight: stageRect.height,
+    scale,
+    offsetX,
+    offsetY
+  };
 }
+
+function updateFloatingActionBarPosition() {
+  if (!photoLensActionBar || !photoOcrLayer || !photoLensStage) return;
+
+  if (selectedOcrIndices.length === 0) {
+    photoLensActionBar.classList.remove("visible");
+    setPhotoLensStatus("Ketuk atau geser angka/huruf untuk blok biru", false);
+    return;
+  }
+
+  const stageRect = photoLensStage.getBoundingClientRect();
+  let minLeft = Infinity;
+  let minTop = Infinity;
+  let maxRight = -Infinity;
+  let maxBottom = -Infinity;
+
+  selectedOcrIndices.forEach((idx) => {
+    const boxEl = photoOcrLayer.querySelector(`.ocr-word-box[data-index="${idx}"]`);
+    if (!boxEl) return;
+    const left = parseFloat(boxEl.style.left) || 0;
+    const top = parseFloat(boxEl.style.top) || 0;
+    const width = parseFloat(boxEl.style.width) || 0;
+    const height = parseFloat(boxEl.style.height) || 0;
+
+    minLeft = Math.min(minLeft, left);
+    minTop = Math.min(minTop, top);
+    maxRight = Math.max(maxRight, left + width);
+    maxBottom = Math.max(maxBottom, top + height);
+  });
+
+  if (!isFinite(minLeft)) {
+    photoLensActionBar.classList.remove("visible");
+    return;
+  }
+
+  photoLensActionBar.classList.add("visible");
+  setPhotoLensStatus("", true);
+
+  const barWidth = photoLensActionBar.offsetWidth || 184;
+  const barHeight = photoLensActionBar.offsetHeight || 42;
+  const halfBar = barWidth / 2;
+
+  const centerX = (minLeft + maxRight) / 2;
+  const clampedCenterX = Math.max(halfBar + 10, Math.min(stageRect.width - halfBar - 10, centerX));
+
+  let targetTop = minTop - 10;
+  if (targetTop - barHeight < 56) {
+    targetTop = Math.min(stageRect.height - 12, maxBottom + barHeight + 14);
+  }
+
+  photoLensActionBar.style.left = `${clampedCenterX}px`;
+  photoLensActionBar.style.top = `${targetTop}px`;
+}
+
+function syncOcrSelectionVisuals() {
+  if (!photoOcrLayer) return;
+  const sorted = Array.from(new Set(selectedOcrIndices)).sort((a, b) => a - b);
+  selectedOcrIndices = sorted;
+
+  const firstIdx = sorted.length > 0 ? sorted[0] : -1;
+  const lastIdx = sorted.length > 0 ? sorted[sorted.length - 1] : -1;
+
+  const boxes = photoOcrLayer.querySelectorAll(".ocr-word-box");
+  boxes.forEach((box) => {
+    const idx = Number(box.getAttribute("data-index"));
+    const isSelected = sorted.includes(idx);
+    box.classList.toggle("selected", isSelected);
+    box.classList.toggle("is-first", isSelected && idx === firstIdx);
+    box.classList.toggle("is-last", isSelected && idx === lastIdx);
+  });
+
+  updateFloatingActionBarPosition();
+}
+
+function renderOcrWordBoxes() {
+  if (!photoOcrLayer) return;
+  const metrics = getRenderedImageMetrics();
+  photoOcrLayer.innerHTML = "";
+  if (!metrics || ocrWordItems.length === 0) return;
+
+  ocrWordItems.forEach((item, index) => {
+    const box = document.createElement("div");
+    box.className = "ocr-word-box";
+    box.setAttribute("data-index", String(index));
+    box.setAttribute("role", "button");
+    box.setAttribute("aria-label", item.text);
+
+    const left = metrics.offsetX + item.bbox.x0 * metrics.scale - 2;
+    const top = metrics.offsetY + item.bbox.y0 * metrics.scale - 2;
+    const width = Math.max(14, (item.bbox.x1 - item.bbox.x0) * metrics.scale + 4);
+    const height = Math.max(16, (item.bbox.y1 - item.bbox.y0) * metrics.scale + 4);
+
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+    box.style.width = `${width}px`;
+    box.style.height = `${height}px`;
+
+    photoOcrLayer.appendChild(box);
+  });
+
+  syncOcrSelectionVisuals();
+}
+
+function findWordIndexAtPoint(clientX, clientY) {
+  if (!photoOcrLayer) return -1;
+  const boxes = photoOcrLayer.querySelectorAll(".ocr-word-box");
+  let closestIdx = -1;
+  let closestDist = Infinity;
+
+  boxes.forEach((box) => {
+    const rect = box.getBoundingClientRect();
+    const pad = 6;
+    if (
+      clientX >= rect.left - pad &&
+      clientX <= rect.right + pad &&
+      clientY >= rect.top - pad &&
+      clientY <= rect.bottom + pad
+    ) {
+      const cx = (rect.left + rect.right) / 2;
+      const cy = (rect.top + rect.bottom) / 2;
+      const dist = Math.hypot(clientX - cx, clientY - cy);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = Number(box.getAttribute("data-index"));
+      }
+    }
+  });
+
+  return closestIdx;
+}
+
+function selectWordRange(startIdx, endIdx) {
+  if (startIdx < 0 || endIdx < 0) return;
+  const from = Math.min(startIdx, endIdx);
+  const to = Math.max(startIdx, endIdx);
+  const range = [];
+  for (let i = from; i <= to; i += 1) {
+    range.push(i);
+  }
+  selectedOcrIndices = range;
+  syncOcrSelectionVisuals();
+}
+
+function setupPhotoOcrInteractions() {
+  if (!photoOcrLayer) return;
+
+  photoOcrLayer.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("#photo-lens-action-bar")) return;
+    const hitIdx = findWordIndexAtPoint(e.clientX, e.clientY);
+    if (hitIdx >= 0) {
+      isOcrDragging = true;
+      ocrDragStartIdx = hitIdx;
+      ocrDragMoved = false;
+      try {
+        photoOcrLayer.setPointerCapture(e.pointerId);
+      } catch (err) {}
+    } else {
+      isOcrDragging = false;
+      ocrDragStartIdx = -1;
+      if (selectedOcrIndices.length > 0) {
+        selectedOcrIndices = [];
+        syncOcrSelectionVisuals();
+      }
+    }
+  });
+
+  photoOcrLayer.addEventListener("pointermove", (e) => {
+    if (!isOcrDragging || ocrDragStartIdx < 0) return;
+    const hoverIdx = findWordIndexAtPoint(e.clientX, e.clientY);
+    if (hoverIdx >= 0 && hoverIdx !== ocrDragStartIdx) {
+      ocrDragMoved = true;
+      selectWordRange(ocrDragStartIdx, hoverIdx);
+    }
+  });
+
+  const finishPointerSelection = (e) => {
+    if (!isOcrDragging) return;
+    const startIdx = ocrDragStartIdx;
+    const wasDragged = ocrDragMoved;
+    isOcrDragging = false;
+    ocrDragStartIdx = -1;
+    ocrDragMoved = false;
+
+    try {
+      if (e && typeof e.pointerId === "number") {
+        photoOcrLayer.releasePointerCapture(e.pointerId);
+      }
+    } catch (err) {}
+
+    if (!wasDragged && startIdx >= 0) {
+      const existingPos = selectedOcrIndices.indexOf(startIdx);
+      if (existingPos >= 0) {
+        selectedOcrIndices.splice(existingPos, 1);
+      } else {
+        selectedOcrIndices.push(startIdx);
+      }
+      syncOcrSelectionVisuals();
+    }
+  };
+
+  photoOcrLayer.addEventListener("pointerup", finishPointerSelection);
+  photoOcrLayer.addEventListener("pointercancel", finishPointerSelection);
+}
+
+setupPhotoOcrInteractions();
+
+window.addEventListener("resize", () => {
+  if (photoLensOverlay && photoLensOverlay.classList.contains("open") && ocrWordItems.length > 0) {
+    renderOcrWordBoxes();
+  }
+});
 
 async function applyDetectedPhotoText(imageUrl) {
   const token = ++ocrRunToken;
-  selectedPhotoTokens = [];
-  setPhotoLensStatus("Mendeteksi angka & huruf...");
-  const detected = await extractTextFromImageUrl(imageUrl);
-  if (token !== ocrRunToken) return;
+  clearPhotoLensState();
+  setPhotoLensStatus("Mendeteksi angka & huruf...", false);
 
-  if (detected) {
-    if (photoExtractedText) {
-      photoExtractedText.value = detected;
+  try {
+    const img = await loadImageElement(imageUrl);
+    if (token !== ocrRunToken) return;
+
+    ocrNaturalWidth = img.naturalWidth || img.width;
+    ocrNaturalHeight = img.naturalHeight || img.height;
+
+    let detectedWords = await detectWordBoxesWithNativeDetector(img);
+    if (token !== ocrRunToken) return;
+
+    if (detectedWords.length === 0) {
+      const enhancedCanvas = buildEnhancedCanvasForOcr(img);
+      detectedWords = await detectWordBoxesWithTesseract(enhancedCanvas);
+      if (token !== ocrRunToken) return;
     }
-    buildPhotoTokens();
-    setPhotoLensStatus("Ketuk angka/huruf untuk blok biru, lalu pilih Salin atau Buat Barkode");
-  } else {
-    buildPhotoTokens();
-    setPhotoLensStatus("Ketik atau tempel angka/huruf lalu pilih Salin atau Buat Barkode");
+
+    detectedWords.sort((a, b) => {
+      const midAY = (a.bbox.y0 + a.bbox.y1) / 2;
+      const midBY = (b.bbox.y0 + b.bbox.y1) / 2;
+      const lineThreshold = Math.max(12, ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.35);
+      if (Math.abs(midAY - midBY) > lineThreshold) {
+        return midAY - midBY;
+      }
+      return a.bbox.x0 - b.bbox.x0;
+    });
+
+    ocrWordItems = detectedWords;
+    renderOcrWordBoxes();
+
+    if (ocrWordItems.length > 0) {
+      setPhotoLensStatus("Ketuk atau geser angka/huruf untuk blok biru", false);
+    } else {
+      setPhotoLensStatus("Angka/huruf tidak terbaca, ketuk Foto Ulang", false);
+    }
+  } catch (err) {
+    if (token !== ocrRunToken) return;
+    setPhotoLensStatus("Gagal memproses foto, ketuk Foto Ulang", false);
   }
 }
 
@@ -349,14 +702,7 @@ function retakePhotoOnly() {
 }
 
 function triggerPhotoCapture() {
-  selectedPhotoTokens = [];
-  if (photoExtractedText) {
-    photoExtractedText.value = "";
-  }
-  if (photoTokenList) {
-    photoTokenList.innerHTML = "";
-  }
-
+  clearPhotoLensState();
   const snapDataUrl = captureSnapshotFromVideo();
   openPhotoLensPanel();
 
@@ -365,92 +711,63 @@ function triggerPhotoCapture() {
     capturedPhotoPreview.classList.add("has-image");
     applyDetectedPhotoText(snapDataUrl);
   } else if (photoCaptureInput) {
-    setPhotoLensStatus("Ambil foto angka atau huruf...");
+    setPhotoLensStatus("Ambil foto angka atau huruf...", false);
     photoCaptureInput.value = "";
     photoCaptureInput.click();
   }
 }
 
-function syncInputWithSelectedTokens() {
-  if (!photoExtractedText) return;
-  if (selectedPhotoTokens.length > 0) {
-    photoExtractedText.value = selectedPhotoTokens.join(" ");
-  }
+function getSelectedPhotoText() {
+  if (selectedOcrIndices.length === 0) return "";
+  return selectedOcrIndices
+    .map((idx) => (ocrWordItems[idx] ? ocrWordItems[idx].text : ""))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 }
 
-function buildPhotoTokens() {
-  if (!photoTokenList) return;
-  const raw = photoExtractedText ? photoExtractedText.value : "";
-  const matches = raw.match(/[A-Za-z0-9]+/g) || [];
-  const uniqueTokens = Array.from(new Set(matches));
-
-  selectedPhotoTokens = selectedPhotoTokens.filter((item) => uniqueTokens.includes(item));
-
-  photoTokenList.innerHTML = "";
-  uniqueTokens.forEach((token) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "photo-token-chip";
-    if (selectedPhotoTokens.includes(token)) {
-      chip.classList.add("selected");
-    }
-    chip.textContent = token;
-    chip.onclick = () => togglePhotoTokenSelection(token);
-    photoTokenList.appendChild(chip);
-  });
-}
-
-function togglePhotoTokenSelection(token) {
-  const cleanToken = String(token || "").trim();
-  if (!cleanToken) return;
-  const idx = selectedPhotoTokens.indexOf(cleanToken);
-  if (idx >= 0) {
-    selectedPhotoTokens.splice(idx, 1);
-  } else {
-    selectedPhotoTokens.push(cleanToken);
+function writeTextToClipboardSafe(text) {
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return;
   }
-  syncInputWithSelectedTokens();
-  buildPhotoTokens();
-  if (selectedPhotoTokens.length > 0) {
-    setPhotoLensStatus(`Terblok biru: "${selectedPhotoTokens.join(" ")}"`);
-  } else {
-    setPhotoLensStatus("Ketuk angka/huruf untuk blok biru, lalu pilih Salin atau Buat Barkode");
-  }
-}
-
-function getActivePhotoTextValue() {
-  if (selectedPhotoTokens.length > 0) {
-    return selectedPhotoTokens.join(" ").trim();
-  }
-  return photoExtractedText ? photoExtractedText.value.trim() : "";
+  try {
+    const tempArea = document.createElement("textarea");
+    tempArea.value = text;
+    tempArea.style.position = "fixed";
+    tempArea.style.opacity = "0";
+    document.body.appendChild(tempArea);
+    tempArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(tempArea);
+  } catch (err) {}
 }
 
 function copyPhotoText() {
-  const targetVal = getActivePhotoTextValue();
+  const targetVal = getSelectedPhotoText();
   if (!targetVal) {
-    setPhotoLensStatus("Pilih atau ketik angka/huruf terlebih dahulu.");
+    setPhotoLensStatus("Ketuk angka/huruf untuk memblok biru terlebih dahulu", false);
     return;
   }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(targetVal).catch(() => {});
-  }
+  writeTextToClipboardSafe(targetVal);
   resetScan();
+  statusBadge.textContent = "Teks Tersalin!";
 }
 
 function createBarcodeFromPhotoText() {
-  const targetVal = getActivePhotoTextValue();
+  const targetVal = getSelectedPhotoText();
   if (!targetVal) {
-    setPhotoLensStatus("Pilih atau ketik angka/huruf untuk membuat barkode.");
+    setPhotoLensStatus("Ketuk angka/huruf untuk memblok biru terlebih dahulu", false);
     return;
   }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(targetVal).catch(() => {});
-  }
+  writeTextToClipboardSafe(targetVal);
   closePhotoLensPanel();
   isScanLocked = false;
   lastScanned = "";
   resetCandidateScan();
   generateQR(targetVal, detectScanFormatType(targetVal));
+  completeScan();
 }
 
 if (photoCaptureInput) {
@@ -750,18 +1067,12 @@ function resetScan() {
   closeFullscreenQrModal();
   closeScanSheetOnly();
   ocrRunToken += 1;
-  selectedPhotoTokens = [];
+  clearPhotoLensState();
   if (photoLensOverlay) {
     photoLensOverlay.classList.remove("open");
   }
   if (photoShutterBtn) {
     photoShutterBtn.classList.remove("active");
-  }
-  if (photoExtractedText) {
-    photoExtractedText.value = "";
-  }
-  if (photoTokenList) {
-    photoTokenList.innerHTML = "";
   }
   isScanLocked = false;
   lastScanned = "";

@@ -55,29 +55,25 @@
           <span class="guide-corner corner-br"></span>
         </div>
 
-        <!-- Overlay Foto Lens: Tampil Foto + Blok Biru Transparan + Menu Salin & Buat Barkode -->
+        <!-- Overlay Foto Lens: Tampil Foto Penuh + Blok Biru Transparan + Menu Mengambang Salin & Buat Barkode -->
         <div id="photo-lens-overlay" class="photo-lens-overlay" aria-live="polite">
-          <div id="photo-lens-action-bar" class="photo-lens-action-bar">
-            <button type="button" class="lens-action-btn" onclick="copyPhotoText()">Salin</button>
-            <button type="button" class="lens-action-btn primary" onclick="createBarcodeFromPhotoText()">Buat Barkode</button>
+          <div class="photo-lens-top-controls">
+            <button type="button" class="lens-top-pill-btn" onclick="retakePhotoOnly()">Foto Ulang</button>
             <button type="button" class="lens-action-close" onclick="closePhotoLensPanel()" aria-label="Kembali ke scan">✕</button>
           </div>
 
-          <div class="photo-lens-stage">
+          <div id="photo-lens-stage" class="photo-lens-stage">
             <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
-            <div id="photo-lens-status" class="photo-lens-status">Memindai angka &amp; huruf...</div>
-            <div id="photo-token-list" class="photo-selectable-layer"></div>
-          </div>
+            <div id="photo-ocr-layer" class="photo-ocr-layer"></div>
 
-          <div class="photo-lens-bottom-bar">
-            <input
-              type="text"
-              id="photo-extracted-text"
-              class="photo-inline-input"
-              placeholder="Ketuk angka/huruf biru atau ketik di sini..."
-              oninput="buildPhotoTokens()"
-            />
-            <button type="button" class="lens-rephoto-btn" onclick="retakePhotoOnly()">Foto Ulang</button>
+            <!-- Menu Kapsul Mengambang di Atas Blok Biru Terpilih -->
+            <div id="photo-lens-action-bar" class="photo-lens-action-bar" role="toolbar" aria-label="Aksi teks terpilih">
+              <button type="button" class="lens-action-btn" onclick="copyPhotoText()">Salin</button>
+              <span class="lens-action-divider" aria-hidden="true"></span>
+              <button type="button" class="lens-action-btn primary" onclick="createBarcodeFromPhotoText()">Buat Barkode</button>
+            </div>
+
+            <div id="photo-lens-status" class="photo-lens-status">Mendeteksi angka &amp; huruf...</div>
           </div>
         </div>
 
