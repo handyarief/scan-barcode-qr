@@ -381,7 +381,7 @@ header {
   display: block;
 }
 
-/* Lapisan Interaktif OCR di Atas Foto */
+/* Lapisan Interaktif OCR & Barcode di Atas Foto */
 .photo-ocr-layer {
   position: absolute;
   inset: 0;
@@ -390,30 +390,48 @@ header {
   touch-action: none;
 }
 
-/* Kotak Angka / Huruf di Atas Foto (Blok Biru Transparan Saat Dipilih) */
+/* Kotak Angka / Huruf di Atas Foto (Presisi Rapat per Kata/Angka) */
 .ocr-word-box {
   position: absolute;
-  border-radius: 4px;
+  border-radius: 3px;
   background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.42);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .ocr-word-box:hover {
   background: rgba(37, 99, 235, 0.22);
-  border-color: rgba(96, 165, 250, 0.7);
+  border-color: rgba(96, 165, 250, 0.78);
 }
 
-.ocr-word-box.selected {
-  background: rgba(37, 99, 235, 0.38);
-  border: 1.5px solid rgba(96, 165, 250, 0.95);
+/* Kotak Area Barcode Terpisah di Atas Foto */
+.ocr-barcode-box {
+  position: absolute;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1.5px dashed rgba(125, 211, 252, 0.78);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.ocr-barcode-box:hover {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(96, 165, 250, 0.9);
+}
+
+.ocr-word-box.selected,
+.ocr-barcode-box.selected {
+  background: rgba(37, 99, 235, 0.36);
+  border: 1.5px solid rgba(96, 165, 250, 0.98);
+  border-style: solid;
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
   z-index: 2;
 }
 
 /* Penanda Tetesan Biru Ala Google Lens di Ujung Blok Terpilih */
-.ocr-word-box.selected.is-first::before {
+.ocr-word-box.selected.is-first::before,
+.ocr-barcode-box.selected.is-first::before {
   content: "";
   position: absolute;
   left: -7px;
@@ -428,7 +446,8 @@ header {
   pointer-events: none;
 }
 
-.ocr-word-box.selected.is-last::after {
+.ocr-word-box.selected.is-last::after,
+.ocr-barcode-box.selected.is-last::after {
   content: "";
   position: absolute;
   right: -7px;
