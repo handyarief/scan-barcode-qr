@@ -251,12 +251,42 @@ function captureSnapshotFromVideo() {
   }
 }
 
+async function extractTextFromImageUrl(imageUrl) {
+  if (!imageUrl || typeof window.TextDetector === "undefined") return "";
+  try {
+    const detector = new window.TextDetector();
+    const img = new Image();
+    img.src = imageUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+    const blocks = await detector.detect(img);
+    if (!Array.isArray(blocks) || blocks.length === 0) return "";
+    const parts = blocks
+      .map((item) => (item && item.rawValue ? String(item.rawValue).trim() : ""))
+      .filter(Boolean);
+    return parts.join(" ").trim();
+  } catch (err) {
+    return "";
+  }
+}
+
+async function applyDetectedPhotoText(imageUrl) {
+  const detected = await extractTextFromImageUrl(imageUrl);
+  if (detected && photoExtractedText) {
+    photoExtractedText.value = detected;
+    buildPhotoTokens();
+  }
+}
+
 function triggerPhotoCapture() {
   openPhotoLensPanel();
   const snapDataUrl = captureSnapshotFromVideo();
   if (snapDataUrl && capturedPhotoPreview) {
     capturedPhotoPreview.src = snapDataUrl;
     capturedPhotoPreview.classList.add("has-image");
+    applyDetectedPhotoText(snapDataUrl);
   }
   if (photoCaptureInput) {
     photoCaptureInput.value = "";
@@ -331,6 +361,7 @@ if (photoCaptureInput) {
       if (resultUrl && capturedPhotoPreview) {
         capturedPhotoPreview.src = resultUrl;
         capturedPhotoPreview.classList.add("has-image");
+        applyDetectedPhotoText(resultUrl);
       }
       openPhotoLensPanel();
       if (photoExtractedText) {

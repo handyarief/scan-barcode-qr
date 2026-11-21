@@ -335,38 +335,29 @@ header {
   cursor: not-allowed;
 }
 
-/* Tombol Foto Bulat (Jepretan Foto Biasa, Ukuran Sama 44px) */
+/* Tombol Foto Bulat: Disamakan Warna & Gaya dengan Ikon Lain */
 .photo-shutter-circle-btn {
   pointer-events: auto;
   width: 44px;
   height: 44px;
   padding: 0;
   border-radius: 50%;
-  background: #ffffff;
-  color: #161616;
-  border: 2px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  background: rgba(55, 65, 81, 0.72);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .photo-shutter-circle-btn:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: rgba(31, 41, 55, 0.88);
 }
 
 .photo-shutter-circle-btn.active {
-  background: #dbeafe;
-  border-color: var(--primary);
-}
-
-.photo-shutter-inner {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid #161616;
-  background: transparent;
-  display: block;
+  background: var(--primary);
+  color: #ffffff;
 }
 
 .zoom-control {
