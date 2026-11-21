@@ -287,6 +287,189 @@ header {
   display: none;
 }
 
+/* Overlay Foto Ala Google Lens: Tanpa Kotak Putih Bawah, Langsung Foto + Blok Biru Transparan */
+.photo-lens-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  background: #090d16;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px 12px;
+  gap: 10px;
+  cursor: default;
+}
+
+.photo-lens-overlay.open {
+  display: flex;
+}
+
+.photo-lens-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 15;
+  flex-shrink: 0;
+}
+
+.lens-action-btn {
+  background: rgba(30, 41, 59, 0.92);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.lens-action-btn:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.96);
+}
+
+.lens-action-btn.primary {
+  background: rgba(37, 99, 235, 0.92);
+  border-color: rgba(147, 197, 253, 0.45);
+}
+
+.lens-action-btn.primary:hover:not(:disabled) {
+  background: rgba(29, 78, 216, 0.98);
+}
+
+.lens-action-close {
+  background: rgba(30, 41, 59, 0.85);
+  color: #e2e8f0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lens-action-close:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.95);
+}
+
+.photo-lens-stage {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #05080f;
+}
+
+.captured-photo-preview {
+  display: none;
+  max-width: 100%;
+  max-height: 62%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.captured-photo-preview.has-image {
+  display: block;
+}
+
+.photo-lens-status {
+  margin-top: 8px;
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: center;
+  padding: 2px 8px;
+}
+
+/* Blok Angka / Huruf Warna Biru Transparan (Seperti Seleksi Teks Gambar 2) */
+.photo-selectable-layer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 8px 6px;
+}
+
+.photo-token-chip {
+  background: rgba(37, 99, 235, 0.24);
+  color: #ffffff;
+  border: 1px solid rgba(96, 165, 250, 0.55);
+  padding: 5px 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  border-radius: 6px;
+  backdrop-filter: blur(2px);
+}
+
+.photo-token-chip:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.42);
+}
+
+.photo-token-chip.selected {
+  background: rgba(37, 99, 235, 0.68);
+  color: #ffffff;
+  border-color: rgba(191, 219, 254, 0.95);
+  box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.5);
+}
+
+.photo-lens-bottom-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  z-index: 15;
+}
+
+.photo-inline-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.86);
+  color: #ffffff;
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.photo-inline-input::placeholder {
+  color: rgba(203, 213, 225, 0.65);
+}
+
+.photo-inline-input:focus {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(15, 23, 42, 0.96);
+}
+
+.lens-rephoto-btn {
+  background: rgba(30, 41, 59, 0.92);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lens-rephoto-btn:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.96);
+}
+
 /* Bar Bawah: Ikon Lama Tetap Sama + 1 Tombol Jepret Foto Bulat */
 .scan-bottom-controls {
   position: absolute;
@@ -421,159 +604,6 @@ header {
 
 .manual-input input:focus {
   border-color: var(--primary);
-}
-
-/* Panel Foto Ala Google Lens: Pilih / Salin Angka atau Huruf -> Paste ke Manual */
-.photo-lens-panel {
-  display: none;
-  flex-direction: column;
-  gap: 10px;
-  margin: 10px 12px 12px;
-  padding: 12px;
-  background: #ffffff;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-}
-
-.photo-lens-panel.open {
-  display: flex;
-}
-
-.photo-lens-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.photo-lens-title {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.photo-lens-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.photo-lens-rephoto {
-  background: #eff6ff;
-  color: #2563eb;
-  padding: 5px 10px;
-  font-size: 0.76rem;
-  border-radius: 6px;
-}
-
-.photo-lens-rephoto:hover:not(:disabled) {
-  background: #dbeafe;
-}
-
-.photo-lens-close {
-  background: #e5e7eb;
-  color: var(--text);
-  padding: 5px 10px;
-  font-size: 0.76rem;
-  border-radius: 6px;
-}
-
-.photo-lens-close:hover:not(:disabled) {
-  background: #d1d5db;
-}
-
-.photo-lens-body {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.captured-photo-preview {
-  display: none;
-  width: 108px;
-  height: 136px;
-  object-fit: cover;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-  background: #0f172a;
-}
-
-.captured-photo-preview.has-image {
-  display: block;
-}
-
-.photo-lens-controls {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.photo-ocr-status {
-  font-size: 0.76rem;
-  color: var(--muted);
-  line-height: 1.3;
-}
-
-.photo-text-input {
-  width: 100%;
-  padding: 9px 11px;
-  border: 1.5px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  outline: none;
-  color: var(--text);
-  background: #f8fafc;
-}
-
-.photo-text-input:focus {
-  border-color: var(--primary);
-  background: #ffffff;
-}
-
-.photo-token-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 112px;
-  overflow-y: auto;
-}
-
-.photo-token-chip {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
-  padding: 6px 10px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  border-radius: 999px;
-}
-
-.photo-token-chip:hover:not(:disabled) {
-  background: #dbeafe;
-}
-
-.photo-token-chip.selected {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #2563eb;
-}
-
-.photo-lens-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.photo-lens-actions button {
-  flex: 1;
-  padding: 8px 11px;
-  font-size: 0.8rem;
-  white-space: nowrap;
 }
 
 button {

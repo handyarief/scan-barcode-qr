@@ -55,6 +55,32 @@
           <span class="guide-corner corner-br"></span>
         </div>
 
+        <!-- Overlay Foto Lens: Tampil Foto + Blok Biru Transparan + Menu Salin & Buat Barkode -->
+        <div id="photo-lens-overlay" class="photo-lens-overlay" aria-live="polite">
+          <div id="photo-lens-action-bar" class="photo-lens-action-bar">
+            <button type="button" class="lens-action-btn" onclick="copyPhotoText()">Salin</button>
+            <button type="button" class="lens-action-btn primary" onclick="createBarcodeFromPhotoText()">Buat Barkode</button>
+            <button type="button" class="lens-action-close" onclick="closePhotoLensPanel()" aria-label="Kembali ke scan">✕</button>
+          </div>
+
+          <div class="photo-lens-stage">
+            <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
+            <div id="photo-lens-status" class="photo-lens-status">Memindai angka &amp; huruf...</div>
+            <div id="photo-token-list" class="photo-selectable-layer"></div>
+          </div>
+
+          <div class="photo-lens-bottom-bar">
+            <input
+              type="text"
+              id="photo-extracted-text"
+              class="photo-inline-input"
+              placeholder="Ketuk angka/huruf biru atau ketik di sini..."
+              oninput="buildPhotoTokens()"
+            />
+            <button type="button" class="lens-rephoto-btn" onclick="retakePhotoOnly()">Foto Ulang</button>
+          </div>
+        </div>
+
         <!-- Bar Bawah: Ikon Lama Tetap Sama + 1 Tombol Jepret Foto Bulat -->
         <div class="scan-bottom-controls">
           <button
@@ -93,7 +119,7 @@
             class="photo-shutter-circle-btn"
             onclick="triggerPhotoCapture()"
             aria-label="Ambil Foto Angka atau Huruf"
-            title="Ambil Foto untuk Salin Angka/Huruf"
+            title="Ambil Foto untuk Pilih Angka/Huruf"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
@@ -143,35 +169,6 @@
           autocomplete="off"
         />
         <button type="button" onclick="handleManualSubmit()">Buat QR</button>
-      </div>
-
-      <!-- Panel Cepat Ambil Foto -> Pilih / Copy Angka atau Huruf -> Paste ke Manual -->
-      <div id="photo-lens-panel" class="photo-lens-panel" aria-live="polite">
-        <div class="photo-lens-header">
-          <span class="photo-lens-title">Lens Angka &amp; Huruf</span>
-          <div class="photo-lens-header-actions">
-            <button type="button" class="photo-lens-rephoto" onclick="retakePhotoOnly()">Foto Ulang</button>
-            <button type="button" class="photo-lens-close" onclick="closePhotoLensPanel()">Tutup</button>
-          </div>
-        </div>
-        <div class="photo-lens-body">
-          <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
-          <div class="photo-lens-controls">
-            <div id="photo-ocr-status" class="photo-ocr-status">Ambil foto atau pilih teks angka/huruf untuk disalin cepat</div>
-            <input
-              type="text"
-              id="photo-extracted-text"
-              class="photo-text-input"
-              placeholder="Hasil deteksi angka atau huruf (bisa diketik/diedit)..."
-              oninput="buildPhotoTokens()"
-            />
-            <div id="photo-token-list" class="photo-token-list"></div>
-            <div class="photo-lens-actions">
-              <button type="button" class="secondary" onclick="copyPhotoText()">Salin</button>
-              <button type="button" onclick="pastePhotoTextToManual()">Paste ke Manual</button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </div>

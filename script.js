@@ -19,9 +19,9 @@ const keyboardToggleBtn = document.getElementById("keyboard-toggle-btn");
 const manualPanel = document.getElementById("manual-panel");
 const photoShutterBtn = document.getElementById("photo-shutter-btn");
 const photoCaptureInput = document.getElementById("photo-capture-input");
-const photoLensPanel = document.getElementById("photo-lens-panel");
+const photoLensOverlay = document.getElementById("photo-lens-overlay");
 const capturedPhotoPreview = document.getElementById("captured-photo-preview");
-const photoOcrStatus = document.getElementById("photo-ocr-status");
+const photoLensStatus = document.getElementById("photo-lens-status");
 const photoExtractedText = document.getElementById("photo-extracted-text");
 const photoTokenList = document.getElementById("photo-token-list");
 const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
@@ -58,7 +58,7 @@ let candidateScanFormat = "";
 let candidateScanHits = 0;
 let candidateScanExpiresAt = 0;
 let isZoomSliderBound = false;
-let copiedPhotoValue = "";
+let selectedPhotoTokens = [];
 let ocrRunToken = 0;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
@@ -224,24 +224,32 @@ function toggleManualPanel() {
   }
 }
 
-// Fitur Foto Ala Google Lens -> Deteksi Angka/Huruf -> Salin & Paste ke Manual
-function setPhotoOcrStatus(msg) {
-  if (photoOcrStatus) {
-    photoOcrStatus.textContent = msg;
+// Fitur Foto Ala Google Lens: Foto -> Blok Biru Transparan -> Salin (kembali ke scan awal) / Buat Barkode (ke tampilan hasil seperti gambar 3)
+function setPhotoLensStatus(msg) {
+  if (photoLensStatus) {
+    photoLensStatus.textContent = msg;
   }
 }
 
 function openPhotoLensPanel() {
-  if (!photoLensPanel || !photoShutterBtn) return;
-  photoLensPanel.classList.add("open");
+  if (!photoLensOverlay || !photoShutterBtn) return;
+  photoLensOverlay.classList.add("open");
   photoShutterBtn.classList.add("active");
+  pauseCameraForSingleScan();
 }
 
 function closePhotoLensPanel() {
   ocrRunToken += 1;
-  if (!photoLensPanel || !photoShutterBtn) return;
-  photoLensPanel.classList.remove("open");
-  photoShutterBtn.classList.remove("active");
+  selectedPhotoTokens = [];
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
+  if (!isScanLocked) {
+    resumeCameraForNextScan();
+  }
 }
 
 function captureSnapshotFromVideo() {
@@ -315,7 +323,8 @@ async function extractTextFromImageUrl(imageUrl) {
 
 async function applyDetectedPhotoText(imageUrl) {
   const token = ++ocrRunToken;
-  setPhotoOcrStatus("Mendeteksi angka & huruf dari foto...");
+  selectedPhotoTokens = [];
+  setPhotoLensStatus("Mendeteksi angka & huruf...");
   const detected = await extractTextFromImageUrl(imageUrl);
   if (token !== ocrRunToken) return;
 
@@ -323,11 +332,11 @@ async function applyDetectedPhotoText(imageUrl) {
     if (photoExtractedText) {
       photoExtractedText.value = detected;
     }
-    copiedPhotoValue = detected;
     buildPhotoTokens();
-    setPhotoOcrStatus("Angka/huruf terdeteksi. Ketuk chip untuk salin atau Paste ke Manual.");
+    setPhotoLensStatus("Ketuk angka/huruf untuk blok biru, lalu pilih Salin atau Buat Barkode");
   } else {
-    setPhotoOcrStatus("Tidak terbaca otomatis. Ketik/edit angka atau huruf lalu Salin / Paste.");
+    buildPhotoTokens();
+    setPhotoLensStatus("Ketik atau tempel angka/huruf lalu pilih Salin atau Buat Barkode");
   }
 }
 
@@ -340,19 +349,32 @@ function retakePhotoOnly() {
 }
 
 function triggerPhotoCapture() {
-  openPhotoLensPanel();
+  selectedPhotoTokens = [];
+  if (photoExtractedText) {
+    photoExtractedText.value = "";
+  }
+  if (photoTokenList) {
+    photoTokenList.innerHTML = "";
+  }
+
   const snapDataUrl = captureSnapshotFromVideo();
+  openPhotoLensPanel();
+
   if (snapDataUrl && capturedPhotoPreview) {
     capturedPhotoPreview.src = snapDataUrl;
     capturedPhotoPreview.classList.add("has-image");
     applyDetectedPhotoText(snapDataUrl);
   } else if (photoCaptureInput) {
-    setPhotoOcrStatus("Ambil foto kode angka/huruf...");
+    setPhotoLensStatus("Ambil foto angka atau huruf...");
     photoCaptureInput.value = "";
     photoCaptureInput.click();
   }
-  if (photoExtractedText) {
-    photoExtractedText.focus();
+}
+
+function syncInputWithSelectedTokens() {
+  if (!photoExtractedText) return;
+  if (selectedPhotoTokens.length > 0) {
+    photoExtractedText.value = selectedPhotoTokens.join(" ");
   }
 }
 
@@ -362,65 +384,73 @@ function buildPhotoTokens() {
   const matches = raw.match(/[A-Za-z0-9]+/g) || [];
   const uniqueTokens = Array.from(new Set(matches));
 
+  selectedPhotoTokens = selectedPhotoTokens.filter((item) => uniqueTokens.includes(item));
+
   photoTokenList.innerHTML = "";
   uniqueTokens.forEach((token) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "photo-token-chip";
-    if (copiedPhotoValue && copiedPhotoValue === token) {
+    if (selectedPhotoTokens.includes(token)) {
       chip.classList.add("selected");
     }
     chip.textContent = token;
-    chip.title = `Salin & masukkan "${token}" ke ketik manual`;
-    chip.onclick = () => copySpecificPhotoValue(token);
+    chip.onclick = () => togglePhotoTokenSelection(token);
     photoTokenList.appendChild(chip);
   });
 }
 
-function copySpecificPhotoValue(val) {
-  const cleanVal = String(val || "").trim();
-  if (!cleanVal) return;
-  copiedPhotoValue = cleanVal;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(cleanVal).catch(() => {});
+function togglePhotoTokenSelection(token) {
+  const cleanToken = String(token || "").trim();
+  if (!cleanToken) return;
+  const idx = selectedPhotoTokens.indexOf(cleanToken);
+  if (idx >= 0) {
+    selectedPhotoTokens.splice(idx, 1);
+  } else {
+    selectedPhotoTokens.push(cleanToken);
   }
+  syncInputWithSelectedTokens();
   buildPhotoTokens();
-  if (manualPanel && !manualPanel.classList.contains("open")) {
-    toggleManualPanel();
+  if (selectedPhotoTokens.length > 0) {
+    setPhotoLensStatus(`Terblok biru: "${selectedPhotoTokens.join(" ")}"`);
+  } else {
+    setPhotoLensStatus("Ketuk angka/huruf untuk blok biru, lalu pilih Salin atau Buat Barkode");
   }
-  if (scannerInput) {
-    scannerInput.value = cleanVal;
-    scannerInput.focus();
+}
+
+function getActivePhotoTextValue() {
+  if (selectedPhotoTokens.length > 0) {
+    return selectedPhotoTokens.join(" ").trim();
   }
-  setPhotoOcrStatus(`Tersalin & masuk ke Manual: "${cleanVal}"`);
+  return photoExtractedText ? photoExtractedText.value.trim() : "";
 }
 
 function copyPhotoText() {
-  const sourceVal = photoExtractedText ? photoExtractedText.value.trim() : "";
-  const targetVal = sourceVal || copiedPhotoValue;
+  const targetVal = getActivePhotoTextValue();
   if (!targetVal) {
-    setPhotoOcrStatus("Belum ada angka atau huruf untuk disalin.");
+    setPhotoLensStatus("Pilih atau ketik angka/huruf terlebih dahulu.");
     return;
   }
-  copySpecificPhotoValue(targetVal);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(targetVal).catch(() => {});
+  }
+  resetScan();
 }
 
-function pastePhotoTextToManual() {
-  const sourceVal = photoExtractedText ? photoExtractedText.value.trim() : "";
-  const targetVal = sourceVal || copiedPhotoValue;
+function createBarcodeFromPhotoText() {
+  const targetVal = getActivePhotoTextValue();
   if (!targetVal) {
-    setPhotoOcrStatus("Belum ada teks untuk di-paste ke Manual.");
+    setPhotoLensStatus("Pilih atau ketik angka/huruf untuk membuat barkode.");
     return;
   }
-  copiedPhotoValue = targetVal;
-  if (manualPanel && !manualPanel.classList.contains("open")) {
-    toggleManualPanel();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(targetVal).catch(() => {});
   }
-  if (scannerInput) {
-    scannerInput.value = targetVal;
-    scannerInput.focus();
-  }
-  setPhotoOcrStatus(`Di-paste ke ketik manual: "${targetVal}"`);
+  closePhotoLensPanel();
+  isScanLocked = false;
+  lastScanned = "";
+  resetCandidateScan();
+  generateQR(targetVal, detectScanFormatType(targetVal));
 }
 
 if (photoCaptureInput) {
@@ -436,9 +466,6 @@ if (photoCaptureInput) {
         applyDetectedPhotoText(resultUrl);
       }
       openPhotoLensPanel();
-      if (photoExtractedText) {
-        photoExtractedText.focus();
-      }
     };
     reader.readAsDataURL(file);
   });
@@ -722,6 +749,20 @@ function downloadQR() {
 function resetScan() {
   closeFullscreenQrModal();
   closeScanSheetOnly();
+  ocrRunToken += 1;
+  selectedPhotoTokens = [];
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
+  if (photoExtractedText) {
+    photoExtractedText.value = "";
+  }
+  if (photoTokenList) {
+    photoTokenList.innerHTML = "";
+  }
   isScanLocked = false;
   lastScanned = "";
   resetCandidateScan();
@@ -857,7 +898,8 @@ if (scannerViewport) {
     if (
       e.target.closest(".scan-top-overlay") ||
       e.target.closest(".scan-bottom-controls") ||
-      e.target.closest("#scan-guide")
+      e.target.closest("#scan-guide") ||
+      e.target.closest("#photo-lens-overlay")
     ) {
       return;
     }
