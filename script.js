@@ -21,6 +21,7 @@ const photoShutterBtn = document.getElementById("photo-shutter-btn");
 const photoCaptureInput = document.getElementById("photo-capture-input");
 const photoLensPanel = document.getElementById("photo-lens-panel");
 const capturedPhotoPreview = document.getElementById("captured-photo-preview");
+const photoOcrStatus = document.getElementById("photo-ocr-status");
 const photoExtractedText = document.getElementById("photo-extracted-text");
 const photoTokenList = document.getElementById("photo-token-list");
 const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
@@ -58,6 +59,7 @@ let candidateScanHits = 0;
 let candidateScanExpiresAt = 0;
 let isZoomSliderBound = false;
 let copiedPhotoValue = "";
+let ocrRunToken = 0;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -222,7 +224,13 @@ function toggleManualPanel() {
   }
 }
 
-// Fitur Foto -> Pilih / Copy Angka atau Huruf -> Paste ke Ketik Manual
+// Fitur Foto Ala Google Lens -> Deteksi Angka/Huruf -> Salin & Paste ke Manual
+function setPhotoOcrStatus(msg) {
+  if (photoOcrStatus) {
+    photoOcrStatus.textContent = msg;
+  }
+}
+
 function openPhotoLensPanel() {
   if (!photoLensPanel || !photoShutterBtn) return;
   photoLensPanel.classList.add("open");
@@ -230,6 +238,7 @@ function openPhotoLensPanel() {
 }
 
 function closePhotoLensPanel() {
+  ocrRunToken += 1;
   if (!photoLensPanel || !photoShutterBtn) return;
   photoLensPanel.classList.remove("open");
   photoShutterBtn.classList.remove("active");
@@ -245,13 +254,21 @@ function captureSnapshotFromVideo() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return "";
     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.85);
+    return canvas.toDataURL("image/jpeg", 0.9);
   } catch (err) {
     return "";
   }
 }
 
-async function extractTextFromImageUrl(imageUrl) {
+function normalizeDetectedText(rawText) {
+  if (!rawText) return "";
+  return String(rawText)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function extractTextWithNativeDetector(imageUrl) {
   if (!imageUrl || typeof window.TextDetector === "undefined") return "";
   try {
     const detector = new window.TextDetector();
@@ -264,19 +281,61 @@ async function extractTextFromImageUrl(imageUrl) {
     const blocks = await detector.detect(img);
     if (!Array.isArray(blocks) || blocks.length === 0) return "";
     const parts = blocks
-      .map((item) => (item && item.rawValue ? String(item.rawValue).trim() : ""))
+      .map((item) => (item && item.rawValue ? normalizeDetectedText(item.rawValue) : ""))
       .filter(Boolean);
-    return parts.join(" ").trim();
+    return normalizeDetectedText(parts.join(" "));
   } catch (err) {
     return "";
   }
 }
 
+async function extractTextWithTesseract(imageUrl) {
+  if (!imageUrl || typeof window.Tesseract === "undefined" || typeof window.Tesseract.recognize !== "function") {
+    return "";
+  }
+  try {
+    const result = await window.Tesseract.recognize(imageUrl, "eng", {
+      logger: () => {}
+    });
+    return normalizeDetectedText(result && result.data ? result.data.text : "");
+  } catch (err) {
+    return "";
+  }
+}
+
+async function extractTextFromImageUrl(imageUrl) {
+  if (!imageUrl) return "";
+  const nativeText = await extractTextWithNativeDetector(imageUrl);
+  if (nativeText) {
+    return nativeText;
+  }
+  const ocrText = await extractTextWithTesseract(imageUrl);
+  return ocrText;
+}
+
 async function applyDetectedPhotoText(imageUrl) {
+  const token = ++ocrRunToken;
+  setPhotoOcrStatus("Mendeteksi angka & huruf dari foto...");
   const detected = await extractTextFromImageUrl(imageUrl);
-  if (detected && photoExtractedText) {
-    photoExtractedText.value = detected;
+  if (token !== ocrRunToken) return;
+
+  if (detected) {
+    if (photoExtractedText) {
+      photoExtractedText.value = detected;
+    }
+    copiedPhotoValue = detected;
     buildPhotoTokens();
+    setPhotoOcrStatus("Angka/huruf terdeteksi. Ketuk chip untuk salin atau Paste ke Manual.");
+  } else {
+    setPhotoOcrStatus("Tidak terbaca otomatis. Ketik/edit angka atau huruf lalu Salin / Paste.");
+  }
+}
+
+function retakePhotoOnly() {
+  openPhotoLensPanel();
+  if (photoCaptureInput) {
+    photoCaptureInput.value = "";
+    photoCaptureInput.click();
   }
 }
 
@@ -287,8 +346,8 @@ function triggerPhotoCapture() {
     capturedPhotoPreview.src = snapDataUrl;
     capturedPhotoPreview.classList.add("has-image");
     applyDetectedPhotoText(snapDataUrl);
-  }
-  if (photoCaptureInput) {
+  } else if (photoCaptureInput) {
+    setPhotoOcrStatus("Ambil foto kode angka/huruf...");
     photoCaptureInput.value = "";
     photoCaptureInput.click();
   }
@@ -308,7 +367,11 @@ function buildPhotoTokens() {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "photo-token-chip";
-    chip.textContent = `Copy: ${token}`;
+    if (copiedPhotoValue && copiedPhotoValue === token) {
+      chip.classList.add("selected");
+    }
+    chip.textContent = token;
+    chip.title = `Salin & masukkan "${token}" ke ketik manual`;
     chip.onclick = () => copySpecificPhotoValue(token);
     photoTokenList.appendChild(chip);
   });
@@ -321,6 +384,7 @@ function copySpecificPhotoValue(val) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(cleanVal).catch(() => {});
   }
+  buildPhotoTokens();
   if (manualPanel && !manualPanel.classList.contains("open")) {
     toggleManualPanel();
   }
@@ -328,19 +392,26 @@ function copySpecificPhotoValue(val) {
     scannerInput.value = cleanVal;
     scannerInput.focus();
   }
+  setPhotoOcrStatus(`Tersalin & masuk ke Manual: "${cleanVal}"`);
 }
 
 function copyPhotoText() {
   const sourceVal = photoExtractedText ? photoExtractedText.value.trim() : "";
   const targetVal = sourceVal || copiedPhotoValue;
-  if (!targetVal) return;
+  if (!targetVal) {
+    setPhotoOcrStatus("Belum ada angka atau huruf untuk disalin.");
+    return;
+  }
   copySpecificPhotoValue(targetVal);
 }
 
 function pastePhotoTextToManual() {
   const sourceVal = photoExtractedText ? photoExtractedText.value.trim() : "";
   const targetVal = sourceVal || copiedPhotoValue;
-  if (!targetVal) return;
+  if (!targetVal) {
+    setPhotoOcrStatus("Belum ada teks untuk di-paste ke Manual.");
+    return;
+  }
   copiedPhotoValue = targetVal;
   if (manualPanel && !manualPanel.classList.contains("open")) {
     toggleManualPanel();
@@ -349,6 +420,7 @@ function pastePhotoTextToManual() {
     scannerInput.value = targetVal;
     scannerInput.focus();
   }
+  setPhotoOcrStatus(`Di-paste ke ketik manual: "${targetVal}"`);
 }
 
 if (photoCaptureInput) {

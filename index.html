@@ -17,6 +17,7 @@
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -147,22 +148,26 @@
       <!-- Panel Cepat Ambil Foto -> Pilih / Copy Angka atau Huruf -> Paste ke Manual -->
       <div id="photo-lens-panel" class="photo-lens-panel" aria-live="polite">
         <div class="photo-lens-header">
-          <span class="photo-lens-title">Foto &amp; Salin Angka / Huruf</span>
-          <button type="button" class="photo-lens-close" onclick="closePhotoLensPanel()">Tutup</button>
+          <span class="photo-lens-title">Lens Angka &amp; Huruf</span>
+          <div class="photo-lens-header-actions">
+            <button type="button" class="photo-lens-rephoto" onclick="retakePhotoOnly()">Foto Ulang</button>
+            <button type="button" class="photo-lens-close" onclick="closePhotoLensPanel()">Tutup</button>
+          </div>
         </div>
         <div class="photo-lens-body">
           <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
           <div class="photo-lens-controls">
+            <div id="photo-ocr-status" class="photo-ocr-status">Ambil foto atau pilih teks angka/huruf untuk disalin cepat</div>
             <input
               type="text"
               id="photo-extracted-text"
               class="photo-text-input"
-              placeholder="Ketik/edit angka atau huruf dari foto..."
+              placeholder="Hasil deteksi angka atau huruf (bisa diketik/diedit)..."
               oninput="buildPhotoTokens()"
             />
             <div id="photo-token-list" class="photo-token-list"></div>
             <div class="photo-lens-actions">
-              <button type="button" class="secondary" onclick="copyPhotoText()">Copy</button>
+              <button type="button" class="secondary" onclick="copyPhotoText()">Salin</button>
               <button type="button" onclick="pastePhotoTextToManual()">Paste ke Manual</button>
             </div>
           </div>
