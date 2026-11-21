@@ -17,6 +17,12 @@ const zoomToggleBtn = document.getElementById("zoom-toggle-btn");
 const autoZoomBtn = document.getElementById("auto-zoom-btn");
 const keyboardToggleBtn = document.getElementById("keyboard-toggle-btn");
 const manualPanel = document.getElementById("manual-panel");
+const photoShutterBtn = document.getElementById("photo-shutter-btn");
+const photoCaptureInput = document.getElementById("photo-capture-input");
+const photoLensPanel = document.getElementById("photo-lens-panel");
+const capturedPhotoPreview = document.getElementById("captured-photo-preview");
+const photoExtractedText = document.getElementById("photo-extracted-text");
+const photoTokenList = document.getElementById("photo-token-list");
 const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
 const scanResultSheet = document.getElementById("scan-result-sheet");
 const sheetDragHandle = document.getElementById("sheet-drag-handle");
@@ -51,6 +57,7 @@ let candidateScanFormat = "";
 let candidateScanHits = 0;
 let candidateScanExpiresAt = 0;
 let isZoomSliderBound = false;
+let copiedPhotoValue = "";
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -213,6 +220,125 @@ function toggleManualPanel() {
   if (isOpen && scannerInput) {
     scannerInput.focus();
   }
+}
+
+// Fitur Foto -> Pilih / Copy Angka atau Huruf -> Paste ke Ketik Manual
+function openPhotoLensPanel() {
+  if (!photoLensPanel || !photoShutterBtn) return;
+  photoLensPanel.classList.add("open");
+  photoShutterBtn.classList.add("active");
+}
+
+function closePhotoLensPanel() {
+  if (!photoLensPanel || !photoShutterBtn) return;
+  photoLensPanel.classList.remove("open");
+  photoShutterBtn.classList.remove("active");
+}
+
+function captureSnapshotFromVideo() {
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return "";
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  } catch (err) {
+    return "";
+  }
+}
+
+function triggerPhotoCapture() {
+  openPhotoLensPanel();
+  const snapDataUrl = captureSnapshotFromVideo();
+  if (snapDataUrl && capturedPhotoPreview) {
+    capturedPhotoPreview.src = snapDataUrl;
+    capturedPhotoPreview.classList.add("has-image");
+  }
+  if (photoCaptureInput) {
+    photoCaptureInput.value = "";
+    photoCaptureInput.click();
+  }
+  if (photoExtractedText) {
+    photoExtractedText.focus();
+  }
+}
+
+function buildPhotoTokens() {
+  if (!photoTokenList) return;
+  const raw = photoExtractedText ? photoExtractedText.value : "";
+  const matches = raw.match(/[A-Za-z0-9]+/g) || [];
+  const uniqueTokens = Array.from(new Set(matches));
+
+  photoTokenList.innerHTML = "";
+  uniqueTokens.forEach((token) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "photo-token-chip";
+    chip.textContent = `Copy: ${token}`;
+    chip.onclick = () => copySpecificPhotoValue(token);
+    photoTokenList.appendChild(chip);
+  });
+}
+
+function copySpecificPhotoValue(val) {
+  const cleanVal = String(val || "").trim();
+  if (!cleanVal) return;
+  copiedPhotoValue = cleanVal;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cleanVal).catch(() => {});
+  }
+  if (manualPanel && !manualPanel.classList.contains("open")) {
+    toggleManualPanel();
+  }
+  if (scannerInput) {
+    scannerInput.value = cleanVal;
+    scannerInput.focus();
+  }
+}
+
+function copyPhotoText() {
+  const sourceVal = photoExtractedText ? photoExtractedText.value.trim() : "";
+  const targetVal = sourceVal || copiedPhotoValue;
+  if (!targetVal) return;
+  copySpecificPhotoValue(targetVal);
+}
+
+function pastePhotoTextToManual() {
+  const sourceVal = photoExtractedText ? photoExtractedText.value.trim() : "";
+  const targetVal = sourceVal || copiedPhotoValue;
+  if (!targetVal) return;
+  copiedPhotoValue = targetVal;
+  if (manualPanel && !manualPanel.classList.contains("open")) {
+    toggleManualPanel();
+  }
+  if (scannerInput) {
+    scannerInput.value = targetVal;
+    scannerInput.focus();
+  }
+}
+
+if (photoCaptureInput) {
+  photoCaptureInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const resultUrl = ev.target && ev.target.result ? String(ev.target.result) : "";
+      if (resultUrl && capturedPhotoPreview) {
+        capturedPhotoPreview.src = resultUrl;
+        capturedPhotoPreview.classList.add("has-image");
+      }
+      openPhotoLensPanel();
+      if (photoExtractedText) {
+        photoExtractedText.focus();
+      }
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function toggleAutoZoom() {

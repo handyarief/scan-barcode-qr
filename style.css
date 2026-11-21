@@ -287,7 +287,7 @@ header {
   display: none;
 }
 
-/* Bar Bawah: 3 Ikon (Lampu, Zoom, Keyboard Manual) */
+/* Bar Bawah: Ikon Lama Tetap Sama + 1 Tombol Jepret Foto Bulat */
 .scan-bottom-controls {
   position: absolute;
   bottom: 22px;
@@ -333,6 +333,40 @@ header {
 .icon-circle-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Tombol Foto Bulat (Jepretan Foto Biasa, Ukuran Sama 44px) */
+.photo-shutter-circle-btn {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #161616;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-shutter-circle-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.photo-shutter-circle-btn.active {
+  background: #dbeafe;
+  border-color: var(--primary);
+}
+
+.photo-shutter-inner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #161616;
+  background: transparent;
+  display: block;
 }
 
 .zoom-control {
@@ -396,6 +430,122 @@ header {
 
 .manual-input input:focus {
   border-color: var(--primary);
+}
+
+/* Panel Foto -> Pilih/Copy Angka atau Huruf -> Paste ke Manual */
+.photo-lens-panel {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 12px 12px;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.photo-lens-panel.open {
+  display: flex;
+}
+
+.photo-lens-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.photo-lens-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.photo-lens-close {
+  background: #e5e7eb;
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  border-radius: 6px;
+}
+
+.photo-lens-close:hover:not(:disabled) {
+  background: #d1d5db;
+}
+
+.photo-lens-body {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.captured-photo-preview {
+  display: none;
+  width: 78px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  background: #0f172a;
+}
+
+.captured-photo-preview.has-image {
+  display: block;
+}
+
+.photo-lens-controls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.photo-text-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  outline: none;
+  color: var(--text);
+  background: #f8f9fa;
+}
+
+.photo-text-input:focus {
+  border-color: var(--primary);
+  background: #ffffff;
+}
+
+.photo-token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.photo-token-chip {
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 5px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+.photo-token-chip:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.photo-lens-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.photo-lens-actions button {
+  padding: 7px 11px;
+  font-size: 0.78rem;
 }
 
 button {

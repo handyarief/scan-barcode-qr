@@ -54,7 +54,7 @@
           <span class="guide-corner corner-br"></span>
         </div>
 
-        <!-- Bar Bawah: 3 Ikon (Lampu/Flash, Zoom, Keyboard Manual) -->
+        <!-- Bar Bawah: Ikon Lama Tetap Sama + 1 Tombol Jepret Foto Bulat -->
         <div class="scan-bottom-controls">
           <button
             id="flash-btn"
@@ -87,6 +87,17 @@
           </button>
 
           <button
+            id="photo-shutter-btn"
+            type="button"
+            class="photo-shutter-circle-btn"
+            onclick="triggerPhotoCapture()"
+            aria-label="Ambil Foto Angka atau Huruf"
+            title="Ambil Foto untuk Salin Angka/Huruf"
+          >
+            <span class="photo-shutter-inner" aria-hidden="true"></span>
+          </button>
+
+          <button
             id="keyboard-toggle-btn"
             type="button"
             class="icon-circle-btn"
@@ -99,6 +110,14 @@
             </svg>
           </button>
         </div>
+
+        <input
+          type="file"
+          id="photo-capture-input"
+          accept="image/*"
+          capture="environment"
+          style="display: none;"
+        />
       </div>
 
       <!-- Panel Slider Zoom (Muncul saat ikon Zoom ditekan) -->
@@ -120,6 +139,31 @@
           autocomplete="off"
         />
         <button type="button" onclick="handleManualSubmit()">Buat QR</button>
+      </div>
+
+      <!-- Panel Cepat Ambil Foto -> Pilih / Copy Angka atau Huruf -> Paste ke Manual -->
+      <div id="photo-lens-panel" class="photo-lens-panel" aria-live="polite">
+        <div class="photo-lens-header">
+          <span class="photo-lens-title">Foto &amp; Salin Angka / Huruf</span>
+          <button type="button" class="photo-lens-close" onclick="closePhotoLensPanel()">Tutup</button>
+        </div>
+        <div class="photo-lens-body">
+          <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
+          <div class="photo-lens-controls">
+            <input
+              type="text"
+              id="photo-extracted-text"
+              class="photo-text-input"
+              placeholder="Ketik/edit angka atau huruf dari foto..."
+              oninput="buildPhotoTokens()"
+            />
+            <div id="photo-token-list" class="photo-token-list"></div>
+            <div class="photo-lens-actions">
+              <button type="button" class="secondary" onclick="copyPhotoText()">Copy</button>
+              <button type="button" onclick="pastePhotoTextToManual()">Paste ke Manual</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
