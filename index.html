@@ -30,7 +30,6 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="back-menu-btn" type="button" class="back-menu-btn" onclick="backToMainMenu()" style="display: none;">← Menu</button>
         <button id="install-btn" type="button" onclick="installApp()">Install App</button>
       </div>
     </header>
@@ -82,6 +81,87 @@
         </button>
       </div>
     </main>
+
+    <!-- Menu Hub Scan to Excel: Tombol + New Task & Daftar Task Berjalan -->
+    <section id="excel-task-hub-view" class="excel-hub-view" style="display: none;" aria-label="Menu Task Scan to Excel">
+      <button type="button" class="excel-new-task-btn" onclick="openNewExcelTaskForm()">
+        <span class="new-task-plus-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </span>
+        <div class="new-task-btn-text">
+          <span class="new-task-btn-title">New Task</span>
+          <span class="new-task-btn-sub">Buat Excel baru &amp; tentukan kolom scan</span>
+        </div>
+      </button>
+
+      <div class="excel-running-section">
+        <div class="excel-running-header">
+          <span class="excel-running-title">Task Berjalan / Belum Selesai</span>
+          <span id="excel-running-count" class="excel-count-badge">0 task</span>
+        </div>
+        <div id="excel-running-tasks-list" class="excel-running-list">
+          <div class="excel-running-empty">Belum ada task berjalan. Tekan <strong>+ New Task</strong> untuk membuat Excel baru.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Menu New Excel: Atur Jumlah Kolom, Nama Tiap Kolom & Ceklis Input Kolom -->
+    <section id="excel-new-task-view" class="excel-new-task-view" style="display: none;" aria-label="Buat Excel Baru">
+      <div class="card new-excel-card">
+        <h2 class="new-excel-card-title">New Excel</h2>
+
+        <div class="form-group">
+          <label for="new-excel-task-name" class="form-label">Nama Task / File Excel</label>
+          <input
+            type="text"
+            id="new-excel-task-name"
+            class="form-text-input"
+            placeholder="Contoh: Scan SN Perangkat"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="new-excel-col-count" class="form-label">Mau Buat Berapa Kolom?</label>
+          <div class="col-count-stepper">
+            <button type="button" class="stepper-btn" onclick="adjustNewExcelColumnCount(-1)" aria-label="Kurangi jumlah kolom">−</button>
+            <input
+              type="number"
+              id="new-excel-col-count"
+              min="1"
+              max="20"
+              value="1"
+              oninput="handleNewExcelColumnCountInput()"
+            />
+            <button type="button" class="stepper-btn" onclick="adjustNewExcelColumnCount(1)" aria-label="Tambah jumlah kolom">+</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Nama Setiap Kolom</label>
+          <div id="new-excel-col-names-list" class="col-names-list"></div>
+        </div>
+
+        <div id="new-excel-seq-wrapper" class="seq-checkbox-card disabled">
+          <label class="seq-checkbox-label" for="new-excel-seq-checkbox">
+            <input type="checkbox" id="new-excel-seq-checkbox" disabled />
+            <span class="seq-checkbox-custom" aria-hidden="true"></span>
+            <div class="seq-checkbox-text">
+              <span class="seq-checkbox-title">Input Kolom</span>
+              <span id="new-excel-seq-hint" class="seq-checkbox-desc">Aktif saat lebih dari 1 kolom: scan otomatis berurutan Kolom 1 → 2 → 3 sampai habis lalu kembali ke Kolom 1</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="new-excel-form-actions">
+          <button type="button" class="secondary" onclick="navigateBackOneStep()">Batal</button>
+          <button type="button" onclick="createAndStartExcelTask()">Mulai Scan</button>
+        </div>
+      </div>
+    </section>
 
     <!-- Area Kamera & Kontrol Pemindai -->
     <div id="scanner-card" class="card scanner-card" style="display: none;">
@@ -247,27 +327,29 @@
       <section id="excel-session-panel" class="excel-session-panel" style="display: none;" aria-live="polite">
         <div class="excel-panel-header">
           <div class="excel-panel-title-wrap">
-            <span class="excel-panel-title">Data Scan Excel</span>
-            <span id="excel-row-count" class="excel-count-badge">0 item</span>
+            <span id="excel-active-task-name" class="excel-panel-title">Data Scan Excel</span>
+            <span id="excel-row-count" class="excel-count-badge">0 baris</span>
           </div>
           <div class="excel-panel-actions">
-            <button type="button" class="excel-clear-btn" onclick="clearExcelSessionRows()">Hapus</button>
-            <button type="button" id="excel-download-btn" class="excel-export-btn" onclick="exportScannedListToExcel()" disabled>Download Excel</button>
+            <button type="button" id="excel-finish-task-btn" class="excel-finish-btn" onclick="markCurrentExcelTaskCompleted()">Selesai</button>
+            <button type="button" id="excel-download-btn" class="excel-export-btn" onclick="exportScannedListToExcel()" disabled>Excel</button>
           </div>
         </div>
+
+        <div id="excel-target-col-bar" class="excel-target-col-bar"></div>
+
         <div class="excel-table-wrap">
           <table class="excel-table">
-            <thead>
+            <thead id="excel-rows-thead">
               <tr>
                 <th>No</th>
-                <th>Hasil Scan</th>
-                <th>Format</th>
+                <th>Kolom 1</th>
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody id="excel-rows-tbody">
               <tr class="excel-empty-row">
-                <td colspan="4">Belum ada data. Arahkan kamera ke barcode/QR untuk mulai mencatat.</td>
+                <td colspan="3">Belum ada data. Arahkan kamera ke barcode/QR untuk mulai mencatat.</td>
               </tr>
             </tbody>
           </table>
@@ -300,6 +382,10 @@
       <div class="sheet-detail-row">
         <span class="sheet-label">Format:</span>
         <span id="sheet-format-value" class="sheet-value">-</span>
+      </div>
+      <div id="sheet-excel-col-row" class="sheet-detail-row" style="display: none;">
+        <span class="sheet-label">Kolom:</span>
+        <span id="sheet-excel-col-value" class="sheet-value">-</span>
       </div>
       <div class="sheet-detail-row sheet-copy-row">
         <button type="button" id="sheet-copy-btn" class="sheet-copy-btn" onclick="copyText()">Salin Teks</button>

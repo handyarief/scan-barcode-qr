@@ -35,25 +35,43 @@ const sheetDragHandle = document.getElementById("sheet-drag-handle");
 const sheetScannedCount = document.getElementById("sheet-scanned-count");
 const sheetBarcodeValue = document.getElementById("sheet-barcode-value");
 const sheetFormatValue = document.getElementById("sheet-format-value");
+const sheetExcelColRow = document.getElementById("sheet-excel-col-row");
+const sheetExcelColValue = document.getElementById("sheet-excel-col-value");
 const fullscreenQrModal = document.getElementById("fullscreen-qr-modal");
 
-// Elemen Menu Utama & Sesi Scan to Excel
+// Elemen Header, Menu Utama & Hub Scan to Excel
 const appHeaderTitle = document.getElementById("app-header-title");
 const appHeaderSubtitle = document.getElementById("app-header-subtitle");
-const backMenuBtn = document.getElementById("back-menu-btn");
 const homeMenuView = document.getElementById("home-menu-view");
+const excelTaskHubView = document.getElementById("excel-task-hub-view");
+const excelRunningCount = document.getElementById("excel-running-count");
+const excelRunningTasksList = document.getElementById("excel-running-tasks-list");
+const excelNewTaskView = document.getElementById("excel-new-task-view");
+const newExcelTaskNameInput = document.getElementById("new-excel-task-name");
+const newExcelColCountInput = document.getElementById("new-excel-col-count");
+const newExcelColNamesList = document.getElementById("new-excel-col-names-list");
+const newExcelSeqWrapper = document.getElementById("new-excel-seq-wrapper");
+const newExcelSeqCheckbox = document.getElementById("new-excel-seq-checkbox");
+const newExcelSeqHint = document.getElementById("new-excel-seq-hint");
 const scannerCard = document.getElementById("scanner-card");
 const scanTopOverlay = document.getElementById("scan-top-overlay");
 const excelScanToast = document.getElementById("excel-scan-toast");
 const excelSessionPanel = document.getElementById("excel-session-panel");
+const excelActiveTaskName = document.getElementById("excel-active-task-name");
 const excelRowCount = document.getElementById("excel-row-count");
 const excelDownloadBtn = document.getElementById("excel-download-btn");
+const excelTargetColBar = document.getElementById("excel-target-col-bar");
+const excelRowsThead = document.getElementById("excel-rows-thead");
 const excelRowsTbody = document.getElementById("excel-rows-tbody");
 
+const EXCEL_TASKS_STORAGE_KEY = "scan2qr_excel_tasks_v2";
+
 let activeAppFeature = "menu"; // "menu" | "1d-to-qr" | "scan-to-excel" | "text-to-qr"
-let excelSessionItems = [];
-let lastExcelScanCode = "";
-let lastExcelScanTime = 0;
+let currentRoute = "menu"; // "menu" | "1d-to-qr" | "text-to-qr" | "scan-to-excel-hub" | "scan-to-excel-new" | "scan-to-excel-scan"
+let isHandlingPopState = false;
+let excelTasks = [];
+let activeExcelTaskId = null;
+let pendingScanData = null; // { text, format }
 let excelToastTimer = null;
 
 let lastScanned = "";
@@ -92,6 +110,7 @@ let ocrDragMoved = false;
 let nativeLiveScanTimer = null;
 let isNativeLiveScanBusy = false;
 let fileDecodeScanner = null;
+let sharedTesseractWorkerPromise = null;
 
 // 1. Pasang Web App Manifest secara dinamis dengan logo lokal
 const logoUrl = new URL("./logo.png", window.location.href).href;
@@ -157,62 +176,147 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// 4. Navigasi Menu Utama Sebelum Scan
+// 4. Penyimpanan Task Scan to Excel di LocalStorage
+function loadExcelTasksFromStorage() {
+  try {
+    const raw = localStorage.getItem(EXCEL_TASKS_STORAGE_KEY);
+    if (!raw) {
+      excelTasks = [];
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    excelTasks = Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    excelTasks = [];
+  }
+}
+
+function saveExcelTasksToStorage() {
+  try {
+    localStorage.setItem(EXCEL_TASKS_STORAGE_KEY, JSON.stringify(excelTasks));
+  } catch (err) {}
+}
+
+function getActiveExcelTask() {
+  if (!activeExcelTaskId) return null;
+  return excelTasks.find((t) => t.id === activeExcelTaskId) || null;
+}
+
+loadExcelTasksFromStorage();
+
+// 5. Navigasi Berbasis Tombol Back HP (History API + Popstate)
+function pushAppHistoryState(routeName) {
+  currentRoute = routeName;
+  if (isHandlingPopState) return;
+  try {
+    window.history.pushState({ appRoute: routeName }, "");
+  } catch (err) {}
+}
+
+try {
+  window.history.replaceState({ appRoute: "menu" }, "");
+} catch (err) {}
+
+window.addEventListener("popstate", () => {
+  isHandlingPopState = true;
+  try {
+    if (fullscreenQrModal && fullscreenQrModal.classList.contains("open")) {
+      resetScan(true);
+      return;
+    }
+    if (scanResultSheet && scanResultSheet.classList.contains("open")) {
+      dismissScanSheet(true);
+      return;
+    }
+    if (photoLensOverlay && photoLensOverlay.classList.contains("open")) {
+      closePhotoLensPanel(true);
+      return;
+    }
+
+    if (currentRoute === "scan-to-excel-scan") {
+      openExcelTaskHubView(true);
+    } else if (currentRoute === "scan-to-excel-new") {
+      openExcelTaskHubView(true);
+    } else if (
+      currentRoute === "scan-to-excel-hub" ||
+      currentRoute === "1d-to-qr" ||
+      currentRoute === "text-to-qr"
+    ) {
+      backToMainMenu(true);
+    }
+  } finally {
+    isHandlingPopState = false;
+  }
+});
+
+function navigateBackOneStep() {
+  if (window.history.length > 1 && currentRoute !== "menu") {
+    window.history.back();
+  } else if (currentRoute === "scan-to-excel-new" || currentRoute === "scan-to-excel-scan") {
+    openExcelTaskHubView(true);
+  } else {
+    backToMainMenu(true);
+  }
+}
+
+function hideAllMainSections() {
+  if (homeMenuView) homeMenuView.style.display = "none";
+  if (excelTaskHubView) excelTaskHubView.style.display = "none";
+  if (excelNewTaskView) excelNewTaskView.style.display = "none";
+  if (scannerCard) {
+    scannerCard.style.display = "none";
+    scannerCard.classList.remove("excel-mode");
+  }
+  if (excelSessionPanel) excelSessionPanel.style.display = "none";
+}
+
+function resetTransientScannerUI() {
+  closeFullscreenQrModal();
+  closeScanSheetOnly();
+  ocrRunToken += 1;
+  clearPhotoLensState();
+  if (photoLensOverlay) photoLensOverlay.classList.remove("open");
+  if (photoShutterBtn) photoShutterBtn.classList.remove("active");
+  if (zoomBox) zoomBox.classList.remove("open");
+  if (zoomToggleBtn) zoomToggleBtn.classList.remove("active");
+  if (manualPanel) manualPanel.classList.remove("open");
+  if (keyboardToggleBtn) keyboardToggleBtn.classList.remove("active");
+  isScanLocked = false;
+  lastScanned = "";
+  pendingScanData = null;
+  resetCandidateScan();
+}
+
 function openFeatureMenu(feature) {
   const validFeatures = ["1d-to-qr", "scan-to-excel", "text-to-qr"];
   if (!validFeatures.includes(feature)) return;
 
   activeAppFeature = feature;
-  closeFullscreenQrModal();
-  closeScanSheetOnly();
-  ocrRunToken += 1;
-  clearPhotoLensState();
-  if (photoLensOverlay) {
-    photoLensOverlay.classList.remove("open");
-  }
-  if (photoShutterBtn) {
-    photoShutterBtn.classList.remove("active");
+  resetTransientScannerUI();
+
+  if (feature === "scan-to-excel") {
+    openExcelTaskHubView(false);
+    return;
   }
 
-  isScanLocked = false;
-  lastScanned = "";
-  resetCandidateScan();
-
-  if (homeMenuView) {
-    homeMenuView.style.display = "none";
-  }
+  hideAllMainSections();
   if (scannerCard) {
     scannerCard.style.display = "flex";
-    scannerCard.classList.toggle("excel-mode", feature === "scan-to-excel");
-  }
-  if (backMenuBtn) {
-    backMenuBtn.style.display = "inline-block";
   }
 
   if (feature === "1d-to-qr") {
     if (appHeaderTitle) appHeaderTitle.textContent = "1D to QR";
     if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Semua Barcode 1D/2D atau scanner fisik";
     if (scanTopOverlay) scanTopOverlay.style.display = "";
-    if (excelSessionPanel) excelSessionPanel.style.display = "none";
     if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
     if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
     if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat Barkode";
     setScanMode(currentScanMode || "full");
-  } else if (feature === "scan-to-excel") {
-    if (appHeaderTitle) appHeaderTitle.textContent = "Scan to Excel";
-    if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Scan biasa, hasil langsung masuk ke Excel";
-    if (scanTopOverlay) scanTopOverlay.style.display = "";
-    if (excelSessionPanel) excelSessionPanel.style.display = "flex";
-    if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
-    if (manualSubmitBtn) manualSubmitBtn.textContent = "Tambah Excel";
-    if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Masuk Excel";
-    setScanMode(currentScanMode || "full");
-    renderExcelSessionTable();
+    pushAppHistoryState("1d-to-qr");
   } else if (feature === "text-to-qr") {
     if (appHeaderTitle) appHeaderTitle.textContent = "Text to QR";
     if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Foto teks/SN lalu pilih blok menjadi QR";
     if (scanTopOverlay) scanTopOverlay.style.display = "none";
-    if (excelSessionPanel) excelSessionPanel.style.display = "none";
     if (galleryPhotoBtn) galleryPhotoBtn.style.display = "inline-flex";
     if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
     if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat QR";
@@ -220,51 +324,225 @@ function openFeatureMenu(feature) {
       scannerViewport.classList.remove("mode-square", "mode-bar");
       scannerViewport.classList.add("mode-full");
     }
+    pushAppHistoryState("text-to-qr");
   }
 
   ensureCameraStarted();
 }
 
-async function backToMainMenu() {
-  activeAppFeature = "menu";
-  closeFullscreenQrModal();
-  closeScanSheetOnly();
-  ocrRunToken += 1;
-  clearPhotoLensState();
+async function openExcelTaskHubView(fromBack = false) {
+  activeAppFeature = "scan-to-excel";
+  activeExcelTaskId = null;
+  resetTransientScannerUI();
+  hideAllMainSections();
 
-  if (photoLensOverlay) {
-    photoLensOverlay.classList.remove("open");
-  }
-  if (photoShutterBtn) {
-    photoShutterBtn.classList.remove("active");
-  }
-  if (zoomBox) {
-    zoomBox.classList.remove("open");
-  }
-  if (zoomToggleBtn) {
-    zoomToggleBtn.classList.remove("active");
-  }
-  if (manualPanel) {
-    manualPanel.classList.remove("open");
-  }
-  if (keyboardToggleBtn) {
-    keyboardToggleBtn.classList.remove("active");
+  if (appHeaderTitle) appHeaderTitle.textContent = "Scan to Excel";
+  if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Buat task baru atau lanjutkan task berjalan";
+  if (excelTaskHubView) excelTaskHubView.style.display = "flex";
+
+  renderExcelRunningTasksList();
+  if (!fromBack) {
+    pushAppHistoryState("scan-to-excel-hub");
+  } else {
+    currentRoute = "scan-to-excel-hub";
   }
 
-  isScanLocked = false;
-  lastScanned = "";
-  resetCandidateScan();
+  await stopCameraGracefully();
+}
+
+function openNewExcelTaskForm() {
+  activeAppFeature = "scan-to-excel";
+  resetTransientScannerUI();
+  hideAllMainSections();
+
+  if (appHeaderTitle) appHeaderTitle.textContent = "New Excel";
+  if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Atur jumlah dan nama kolom Excel baru";
+  if (excelNewTaskView) excelNewTaskView.style.display = "flex";
+
+  const now = new Date();
+  const defaultTitle = `Excel_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(
+    now.getDate()
+  ).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+
+  if (newExcelTaskNameInput) {
+    newExcelTaskNameInput.value = defaultTitle;
+  }
+  if (newExcelColCountInput) {
+    newExcelColCountInput.value = "1";
+  }
+  renderNewExcelColumnInputs(1);
+  pushAppHistoryState("scan-to-excel-new");
+}
+
+function adjustNewExcelColumnCount(delta) {
+  if (!newExcelColCountInput) return;
+  const current = parseInt(newExcelColCountInput.value, 10) || 1;
+  const next = Math.max(1, Math.min(20, current + delta));
+  newExcelColCountInput.value = String(next);
+  renderNewExcelColumnInputs(next);
+}
+
+function handleNewExcelColumnCountInput() {
+  if (!newExcelColCountInput) return;
+  let val = parseInt(newExcelColCountInput.value, 10);
+  if (isNaN(val) || val < 1) val = 1;
+  if (val > 20) val = 20;
+  renderNewExcelColumnInputs(val);
+}
+
+function renderNewExcelColumnInputs(count) {
+  if (!newExcelColNamesList) return;
+  const existingInputs = newExcelColNamesList.querySelectorAll("input[data-col-idx]");
+  const savedNames = {};
+  existingInputs.forEach((inp) => {
+    savedNames[Number(inp.getAttribute("data-col-idx"))] = inp.value;
+  });
+
+  let html = "";
+  for (let i = 0; i < count; i += 1) {
+    const val = savedNames[i] !== undefined ? savedNames[i] : `Kolom ${i + 1}`;
+    html += `<div class="col-name-item">
+      <span class="col-name-badge">Kolom ${i + 1}</span>
+      <input type="text" data-col-idx="${i}" value="${escapeHtmlSafe(val)}" placeholder="Nama Kolom ${i + 1}" autocomplete="off" />
+    </div>`;
+  }
+  newExcelColNamesList.innerHTML = html;
+
+  const isMultiColumn = count > 1;
+  if (newExcelSeqWrapper && newExcelSeqCheckbox) {
+    newExcelSeqWrapper.classList.toggle("disabled", !isMultiColumn);
+    newExcelSeqCheckbox.disabled = !isMultiColumn;
+    if (!isMultiColumn) {
+      newExcelSeqCheckbox.checked = false;
+    } else if (!newExcelSeqCheckbox.dataset.userToggled) {
+      newExcelSeqCheckbox.checked = true;
+    }
+  }
+}
+
+if (newExcelSeqCheckbox) {
+  newExcelSeqCheckbox.addEventListener("change", () => {
+    newExcelSeqCheckbox.dataset.userToggled = "1";
+  });
+}
+
+function createAndStartExcelTask() {
+  const rawTaskName = newExcelTaskNameInput ? newExcelTaskNameInput.value.trim() : "";
+  const taskName = rawTaskName || `Excel_${Date.now()}`;
+  const count = Math.max(1, Math.min(20, parseInt(newExcelColCountInput ? newExcelColCountInput.value : "1", 10) || 1));
+
+  const colInputs = newExcelColNamesList ? newExcelColNamesList.querySelectorAll("input[data-col-idx]") : [];
+  const columns = [];
+  for (let i = 0; i < count; i += 1) {
+    const inp = colInputs[i];
+    const colLabel = inp && inp.value.trim() ? inp.value.trim() : `Kolom ${i + 1}`;
+    columns.push(colLabel);
+  }
+
+  const sequentialColumns = count > 1 && Boolean(newExcelSeqCheckbox && newExcelSeqCheckbox.checked);
+
+  const newTask = {
+    id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    name: taskName,
+    columns,
+    sequentialColumns,
+    rows: [],
+    activeColIndex: 0,
+    status: "running",
+    createdAt: new Date().toISOString()
+  };
+
+  excelTasks.unshift(newTask);
+  saveExcelTasksToStorage();
+  openExcelTaskScanner(newTask.id);
+}
+
+function openExcelTaskScanner(taskId) {
+  const task = excelTasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  activeAppFeature = "scan-to-excel";
+  activeExcelTaskId = task.id;
+  resetTransientScannerUI();
+  hideAllMainSections();
+
+  if (appHeaderTitle) appHeaderTitle.textContent = task.name;
+  if (appHeaderSubtitle) {
+    const modeDesc = task.sequentialColumns
+      ? `Input Kolom berurutan (${task.columns.length} kolom)`
+      : `${task.columns.length} kolom Excel`;
+    appHeaderSubtitle.textContent = modeDesc;
+  }
 
   if (scannerCard) {
-    scannerCard.style.display = "none";
-    scannerCard.classList.remove("excel-mode");
+    scannerCard.style.display = "flex";
+    scannerCard.classList.add("excel-mode");
   }
-  if (excelSessionPanel) {
-    excelSessionPanel.style.display = "none";
+  if (scanTopOverlay) scanTopOverlay.style.display = "";
+  if (excelSessionPanel) excelSessionPanel.style.display = "flex";
+  if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
+  if (manualSubmitBtn) manualSubmitBtn.textContent = "Scan Manual";
+  if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Pilih Kode";
+
+  setScanMode(currentScanMode || "full");
+  renderExcelSessionTable();
+  pushAppHistoryState("scan-to-excel-scan");
+  ensureCameraStarted();
+}
+
+function deleteExcelTaskById(taskId) {
+  excelTasks = excelTasks.filter((t) => t.id !== taskId);
+  saveExcelTasksToStorage();
+  renderExcelRunningTasksList();
+}
+
+function markCurrentExcelTaskCompleted() {
+  const task = getActiveExcelTask();
+  if (task) {
+    task.status = "completed";
+    saveExcelTasksToStorage();
   }
-  if (backMenuBtn) {
-    backMenuBtn.style.display = "none";
+  navigateBackOneStep();
+}
+
+function renderExcelRunningTasksList() {
+  const runningTasks = excelTasks.filter((t) => t.status !== "completed");
+  if (excelRunningCount) {
+    excelRunningCount.textContent = `${runningTasks.length} task`;
   }
+  if (!excelRunningTasksList) return;
+
+  if (runningTasks.length === 0) {
+    excelRunningTasksList.innerHTML =
+      '<div class="excel-running-empty">Belum ada task berjalan. Tekan <strong>+ New Task</strong> untuk membuat Excel baru.</div>';
+    return;
+  }
+
+  excelRunningTasksList.innerHTML = runningTasks
+    .map((task) => {
+      const colNamesPreview = task.columns.join(", ");
+      const nextColName = task.columns[task.activeColIndex] || task.columns[0] || "Kolom 1";
+      const seqBadge = task.sequentialColumns ? ` • Urut: ${escapeHtmlSafe(nextColName)}` : "";
+      return `<div class="excel-task-card">
+        <div class="excel-task-card-info">
+          <div class="excel-task-card-title">${escapeHtmlSafe(task.name)}</div>
+          <div class="excel-task-card-meta">${task.columns.length} Kolom (${escapeHtmlSafe(colNamesPreview)}) • ${task.rows.length} baris${seqBadge}</div>
+        </div>
+        <div class="excel-task-card-actions">
+          <button type="button" class="excel-task-open-btn" onclick="openExcelTaskScanner('${escapeHtmlSafe(task.id)}')">Lanjut</button>
+          <button type="button" class="excel-task-del-btn" onclick="deleteExcelTaskById('${escapeHtmlSafe(task.id)}')">Hapus</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+async function backToMainMenu(fromBack = false) {
+  activeAppFeature = "menu";
+  activeExcelTaskId = null;
+  resetTransientScannerUI();
+  hideAllMainSections();
+
   if (homeMenuView) {
     homeMenuView.style.display = "flex";
   }
@@ -275,10 +553,16 @@ async function backToMainMenu() {
     appHeaderSubtitle.textContent = "Pilih fitur pemindaian di bawah";
   }
 
+  if (!fromBack) {
+    pushAppHistoryState("menu");
+  } else {
+    currentRoute = "menu";
+  }
+
   await stopCameraGracefully();
 }
 
-// 5. Getar & bunyi beep singkat saat scan berhasil
+// 6. Getar & bunyi beep singkat saat scan berhasil
 function triggerScanFeedback() {
   try {
     if (navigator.vibrate) {
@@ -374,7 +658,7 @@ function toggleManualPanel() {
   }
 }
 
-// 6. Fitur Foto Ala Google Lens & OCR Akurasi Tinggi (Normalisasi Lokal + Anti-Garis Tabel + Ink Trimming)
+// 7. Engine Foto Lens: Deteksi Barcode & Huruf/Angka Cepat + Sangat Akurat
 function setPhotoLensStatus(msg, hide = false) {
   if (!photoLensStatus) return;
   photoLensStatus.textContent = msg;
@@ -400,12 +684,20 @@ function clearPhotoLensState() {
 
 function openPhotoLensPanel() {
   if (!photoLensOverlay || !photoShutterBtn) return;
+  const wasOpen = photoLensOverlay.classList.contains("open");
   photoLensOverlay.classList.add("open");
   photoShutterBtn.classList.add("active");
   pauseCameraForSingleScan();
+  if (!wasOpen) {
+    pushAppHistoryState(`${currentRoute}:photo-lens`);
+  }
 }
 
-function closePhotoLensPanel() {
+function closePhotoLensPanel(fromBack = false) {
+  if (!fromBack && photoLensOverlay && photoLensOverlay.classList.contains("open")) {
+    navigateBackOneStep();
+    return;
+  }
   ocrRunToken += 1;
   clearPhotoLensState();
   if (photoLensOverlay) {
@@ -444,9 +736,45 @@ function loadImageElement(imageUrl) {
   });
 }
 
+function withPromiseTimeout(promise, ms, fallbackValue) {
+  let timer = null;
+  const timeoutPromise = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(fallbackValue), ms);
+  });
+  return Promise.race([
+    promise.finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    timeoutPromise
+  ]);
+}
+
+async function getPersistentOcrWorker() {
+  if (typeof window.Tesseract === "undefined" || typeof window.Tesseract.createWorker !== "function") {
+    return null;
+  }
+  if (!sharedTesseractWorkerPromise) {
+    sharedTesseractWorkerPromise = (async () => {
+      try {
+        const worker = await window.Tesseract.createWorker("eng", 1, {
+          logger: () => {}
+        });
+        await worker.setParameters({
+          tessedit_pageseg_mode: "11",
+          preserve_interword_spaces: "1"
+        });
+        return worker;
+      } catch (err) {
+        sharedTesseractWorkerPromise = null;
+        return null;
+      }
+    })();
+  }
+  return sharedTesseractWorkerPromise;
+}
+
 function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
-  // Hapus garis tabel horizontal panjang agar tidak menyatu dengan karakter SN di atas/bawahnya
-  const minHorizRun = Math.max(80, Math.floor(width * 0.28));
+  const minHorizRun = Math.max(70, Math.floor(width * 0.26));
   for (let y = 1; y < height - 1; y += 1) {
     const rowOffset = y * width;
     let runStart = -1;
@@ -471,8 +799,7 @@ function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
     }
   }
 
-  // Hapus garis batas kolom vertikal panjang agar tidak melebar ke kolom samping
-  const minVertRun = Math.max(90, Math.floor(height * 0.28));
+  const minVertRun = Math.max(80, Math.floor(height * 0.26));
   for (let x = 1; x < width - 1; x += 1) {
     let runStart = -1;
     for (let y = 0; y <= height; y += 1) {
@@ -501,7 +828,7 @@ function buildEnhancedCanvasForOcr(img) {
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   const maxDim = Math.max(naturalW, naturalH, 1);
-  const targetMaxDim = 2200;
+  const targetMaxDim = 1520;
   const scale = maxDim > targetMaxDim ? targetMaxDim / maxDim : 1;
 
   const width = Math.max(1, Math.round(naturalW * scale));
@@ -523,8 +850,7 @@ function buildEnhancedCanvasForOcr(img) {
       rawGray[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     }
 
-    // Estimasi pencahayaan latar lokal (grid tile) agar area redup di tengah kertas ikut terang merata
-    const tileSize = Math.max(24, Math.round(Math.min(width, height) / 18));
+    const tileSize = Math.max(22, Math.round(Math.min(width, height) / 18));
     const gridW = Math.max(1, Math.ceil(width / tileSize));
     const gridH = Math.max(1, Math.ceil(height / tileSize));
     const tileBg = new Float32Array(gridW * gridH);
@@ -576,8 +902,7 @@ function buildEnhancedCanvasForOcr(img) {
           (b01 * (1 - wx) + b11 * wx) * wy;
 
         const rel = (rawGray[rOff + x] / Math.max(55, localBg)) * 242;
-        // Kontras S-curve ringan untuk mempertegas tinta SN terhadap kertas putih
-        const stretched = rel < 165 ? rel * 0.76 : Math.min(255, 165 + (rel - 165) * 1.18);
+        const stretched = rel < 165 ? rel * 0.74 : Math.min(255, 165 + (rel - 165) * 1.2);
         normGray[rOff + x] = Math.max(0, Math.min(255, Math.round(stretched)));
       }
     }
@@ -694,7 +1019,7 @@ function detectStripeBarcodeRegions(canvas, scale) {
       for (let x = 2; x < w - 2; x += 2) {
         const idx = (y * w + x) * 4;
         const lum = imgData[idx];
-        const isDark = lum < 128;
+        const isDark = lum < 132;
         if (x > 2 && isDark !== prevDark) {
           transitions += 1;
           if (x < firstX) firstX = x;
@@ -704,7 +1029,7 @@ function detectStripeBarcodeRegions(canvas, scale) {
       }
 
       const span = Math.max(1, lastX - firstX);
-      if (transitions >= 22 && span > w * 0.2) {
+      if (transitions >= 20 && span > w * 0.18) {
         rowScores[y] = transitions / span;
         rowMinX[y] = firstX;
         rowMaxX[y] = lastX;
@@ -718,7 +1043,7 @@ function detectStripeBarcodeRegions(canvas, scale) {
     let countRows = 0;
 
     for (let y = 0; y <= h; y += 2) {
-      const active = y < h && rowScores[y] > 0.055;
+      const active = y < h && rowScores[y] > 0.05;
       if (active) {
         if (startY < 0) {
           startY = y;
@@ -732,15 +1057,15 @@ function detectStripeBarcodeRegions(canvas, scale) {
       } else if (startY >= 0) {
         const endY = y - 2;
         const bandHeight = endY - startY;
-        if (bandHeight >= Math.max(22, h * 0.03) && countRows >= 5) {
+        if (bandHeight >= Math.max(20, h * 0.028) && countRows >= 5) {
           const avgMinX = Math.max(0, sumMinX / countRows - 6);
           const avgMaxX = Math.min(w, sumMaxX / countRows + 6);
           const bandWidth = avgMaxX - avgMinX;
-          if (bandWidth > bandHeight * 1.25) {
+          if (bandWidth > bandHeight * 1.2) {
             regions.push({
               type: "barcode",
               text: "",
-              format: "CODE_39",
+              format: "CODE_128",
               bbox: {
                 x0: avgMinX * invScale,
                 y0: Math.max(0, startY - 2) * invScale,
@@ -800,7 +1125,7 @@ function canvasToPngFile(canvas, fileName) {
   });
 }
 
-function buildBinarizedCropCanvas(sourceCanvas) {
+function buildBinarizedCropCanvas(sourceCanvas, thresholdFactor = 0.88) {
   const w = sourceCanvas.width;
   const h = sourceCanvas.height;
   const out = document.createElement("canvas");
@@ -824,7 +1149,7 @@ function buildBinarizedCropCanvas(sourceCanvas) {
     }
 
     const meanLum = count > 0 ? sumLum / count : 128;
-    const threshold = Math.max(85, Math.min(205, meanLum * 0.88));
+    const threshold = Math.max(75, Math.min(215, meanLum * thresholdFactor));
 
     for (let i = 0; i < len; i += 4) {
       const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
@@ -874,16 +1199,16 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
   const bWidth = Math.max(10, bc.bbox.x1 - bc.bbox.x0);
   const bHeight = Math.max(10, bc.bbox.y1 - bc.bbox.y0);
 
-  const marginX = Math.round(bWidth * 0.16);
-  const marginY = Math.round(bHeight * 0.24);
+  const marginX = Math.round(bWidth * 0.18);
+  const marginY = Math.round(bHeight * 0.25);
   const sx = Math.max(0, Math.floor(bc.bbox.x0 - marginX));
   const sy = Math.max(0, Math.floor(bc.bbox.y0 - marginY));
   const sw = Math.min(naturalW - sx, Math.ceil(bWidth + marginX * 2));
   const sh = Math.min(naturalH - sy, Math.ceil(bHeight + marginY * 2));
   if (sw <= 10 || sh <= 10) return;
 
-  const quietPad = 48;
-  const upScale = sw < 800 ? 2 : 1;
+  const quietPad = 56;
+  const upScale = sw < 900 ? 2 : 1;
   const cropCanvas = document.createElement("canvas");
   cropCanvas.width = sw * upScale + quietPad * 2;
   cropCanvas.height = sh * upScale + quietPad * 2;
@@ -902,18 +1227,22 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
     return;
   }
 
-  const binCanvas = buildBinarizedCropCanvas(cropCanvas);
-  const binNative = await detectBarcodeBoxesWithNativeDetector(binCanvas);
-  const matchedBinNative = binNative.find((item) => item.text && item.text.length >= 2);
-  if (matchedBinNative) {
-    bc.text = matchedBinNative.text;
-    if (matchedBinNative.format) bc.format = matchedBinNative.format;
+  const binNormal = buildBinarizedCropCanvas(cropCanvas, 0.88);
+  const binBright = buildBinarizedCropCanvas(cropCanvas, 1.02);
+
+  const binNative =
+    (await detectBarcodeBoxesWithNativeDetector(binNormal)).find((item) => item.text && item.text.length >= 2) ||
+    (await detectBarcodeBoxesWithNativeDetector(binBright)).find((item) => item.text && item.text.length >= 2);
+  if (binNative) {
+    bc.text = binNative.text;
+    if (binNative.format) bc.format = binNative.format;
     return;
   }
 
   const zxingRes =
     (await scanBarcodeFromCanvasWithFileDecoder(cropCanvas)) ||
-    (await scanBarcodeFromCanvasWithFileDecoder(binCanvas));
+    (await scanBarcodeFromCanvasWithFileDecoder(binNormal)) ||
+    (await scanBarcodeFromCanvasWithFileDecoder(binBright));
   if (zxingRes && zxingRes.text) {
     bc.text = zxingRes.text;
     if (zxingRes.format) bc.format = zxingRes.format;
@@ -975,7 +1304,6 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
   const bh = y1 - y0;
   if (bw <= 6 || bh <= 6) return rawBbox;
 
-  // Hitung kepadatan piksel tinta gelap per kolom di dalam kotak
   const colCounts = new Uint16Array(bw);
   const rowCounts = new Uint16Array(bh);
   const inkThreshold = 155;
@@ -992,7 +1320,6 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
     rowCounts[y - y0] = rHits;
   }
 
-  // Pangkas baris atas/bawah yang kosong atau sisa garis horizontal penuh
   let trimY0 = 0;
   let trimY1 = bh - 1;
   const maxLineSpan = Math.max(bw * 0.94, 40);
@@ -1004,7 +1331,6 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
   }
 
   const activeHeight = Math.max(6, trimY1 - trimY0 + 1);
-  // Hitung ulang proyeksi kolom hanya pada rentang tinggi huruf aktual
   const activeColCounts = new Uint16Array(bw);
   for (let y = y0 + trimY0; y <= y0 + trimY1; y += 1) {
     const rOff = y * imgW;
@@ -1015,7 +1341,6 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
     }
   }
 
-  // Kelompokkan segmen tinta horizontal yang terpisah celah lebar (mencegah kotak melebar selebar tabel)
   const segments = [];
   let segStart = -1;
   let emptyGap = 0;
@@ -1051,7 +1376,6 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
     return rawBbox;
   }
 
-  // Pilih segmen tinta utama yang paling sesuai dengan panjang teks karakter
   let bestSeg = segments[0];
   if (segments.length > 1) {
     const expectedWidth = Math.max(16, text.length * activeHeight * 0.62);
@@ -1162,7 +1486,7 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
 
       const conf = typeof w.confidence === "number" ? w.confidence : 0;
       const isCodeLike = /[0-9]/.test(rawStr) && rawStr.length >= 3;
-      const minConf = isCodeLike ? 22 : 42;
+      const minConf = isCodeLike ? 20 : 38;
       return conf >= minConf;
     })
     .map((w) => {
@@ -1197,93 +1521,47 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
     .filter((item) => item.text.length > 0 && !isBarcodeArtifactText(item.text, item.bbox));
 }
 
-function computeBoxIoU(boxA, boxB) {
-  const interX0 = Math.max(boxA.x0, boxB.x0);
-  const interY0 = Math.max(boxA.y0, boxB.y0);
-  const interX1 = Math.min(boxA.x1, boxB.x1);
-  const interY1 = Math.min(boxA.y1, boxB.y1);
-  if (interX1 <= interX0 || interY1 <= interY0) return 0;
-
-  const interArea = (interX1 - interX0) * (interY1 - interY0);
-  const areaA = Math.max(1, (boxA.x1 - boxA.x0) * (boxA.y1 - boxA.y0));
-  const areaB = Math.max(1, (boxB.x1 - boxB.x0) * (boxB.y1 - boxB.y0));
-  return interArea / Math.max(1, areaA + areaB - interArea);
-}
-
-function mergeUniqueWordDetections(primaryWords, secondaryWords) {
-  const merged = [...primaryWords];
-  secondaryWords.forEach((cand) => {
-    const candMidX = (cand.bbox.x0 + cand.bbox.x1) / 2;
-    const candMidY = (cand.bbox.y0 + cand.bbox.y1) / 2;
-
-    const duplicateIdx = merged.findIndex((existing) => {
-      if (computeBoxIoU(existing.bbox, cand.bbox) > 0.28) return true;
-      const exMidX = (existing.bbox.x0 + existing.bbox.x1) / 2;
-      const exMidY = (existing.bbox.y0 + existing.bbox.y1) / 2;
-      const sameRow = Math.abs(exMidY - candMidY) < Math.max(10, (existing.bbox.y1 - existing.bbox.y0) * 0.55);
-      const sameCol = Math.abs(exMidX - candMidX) < Math.max(18, (existing.bbox.x1 - existing.bbox.x0) * 0.45);
-      return sameRow && sameCol;
-    });
-
-    if (duplicateIdx < 0) {
-      merged.push(cand);
-    } else {
-      const existing = merged[duplicateIdx];
-      // Jika kandidat kedua menangkap SN lebih lengkap dan panjangnya wajar, perbarui
-      if (cand.text.length > existing.text.length && cand.confidence >= existing.confidence - 8) {
-        merged[duplicateIdx] = cand;
-      }
-    }
-  });
-  return merged;
-}
-
 async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
-  if (typeof window.Tesseract === "undefined" || typeof window.Tesseract.recognize !== "function") {
-    return [];
-  }
   try {
-    // Pass 1: Sparse Text (PSM 11) agar setiap baris SN di tengah tabel terdeteksi tanpa terlewat
-    const sparseResult = await window.Tesseract.recognize(
-      canvas,
-      "eng",
-      {
-        logger: () => {},
-        tessedit_pageseg_mode: "11"
-      },
-      { blocks: true, text: true, tsv: true }
-    );
-    const sparseData = sparseResult && sparseResult.data ? sparseResult.data : null;
-    const sparseWords = parseRawTesseractWords(
-      extractWordsFromTesseractData(sparseData),
-      canvas,
-      scale,
-      cleanGray
-    );
+    const worker = await withPromiseTimeout(getPersistentOcrWorker(), 4500, null);
+    if (worker) {
+      const recognizeRes = await withPromiseTimeout(
+        worker.recognize(canvas, {}, { blocks: true, text: true, tsv: true }),
+        8500,
+        null
+      );
+      const data = recognizeRes && recognizeRes.data ? recognizeRes.data : null;
+      return parseRawTesseractWords(
+        extractWordsFromTesseractData(data),
+        canvas,
+        scale,
+        cleanGray
+      );
+    }
 
-    // Pass 2: Auto/Block Layout (PSM 3) untuk melengkapi jika ada kata terstruktur yang terlewat di Pass 1
-    const blockResult = await window.Tesseract.recognize(
-      canvas,
-      "eng",
-      {
-        logger: () => {},
-        tessedit_pageseg_mode: "3"
-      },
-      { blocks: true, text: true, tsv: true }
-    );
-    const blockData = blockResult && blockResult.data ? blockResult.data : null;
-    const blockWords = parseRawTesseractWords(
-      extractWordsFromTesseractData(blockData),
-      canvas,
-      scale,
-      cleanGray
-    );
-
-    return mergeUniqueWordDetections(sparseWords, blockWords);
-  } catch (err) {
-    return [];
-  }
+    if (typeof window.Tesseract !== "undefined" && typeof window.Tesseract.recognize === "function") {
+      const fallbackRes = await withPromiseTimeout(
+        window.Tesseract.recognize(
+          canvas,
+          "eng",
+          { logger: () => {}, tessedit_pageseg_mode: "11" },
+          { blocks: true, text: true, tsv: true }
+        ),
+        8500,
+        null
+      );
+      const data = fallbackRes && fallbackRes.data ? fallbackRes.data : null;
+      return parseRawTesseractWords(
+        extractWordsFromTesseractData(data),
+        canvas,
+        scale,
+        cleanGray
+      );
+    }
+  } catch (err) {}
+  return [];
 }
+
 function isLabelPrefixToken(token) {
   return /^(S\/N|P\/N|SN|PN|NO|ID|LOT|BATCH|DESC|QTY|PCS)[:：]?$/i.test(String(token || "").trim());
 }
@@ -1295,14 +1573,14 @@ function attachFallbackValuesToBarcodes(barcodeItems, wordItems) {
     if (bc.text) return;
     const b = bc.bbox;
     const bHeight = Math.max(14, b.y1 - b.y0);
-    const maxSearchY = b.y1 + bHeight * 1.85;
+    const maxSearchY = b.y1 + bHeight * 1.95;
 
     const candidatesBelow = wordItems
       .filter((w) => {
         const wMidY = (w.bbox.y0 + w.bbox.y1) / 2;
         const wMidX = (w.bbox.x0 + w.bbox.x1) / 2;
         const isBelow = wMidY >= b.y1 - 4 && wMidY <= maxSearchY;
-        const isAlignedX = wMidX >= b.x0 - 48 && wMidX <= b.x1 + 48;
+        const isAlignedX = wMidX >= b.x0 - 52 && wMidX <= b.x1 + 52;
         const isCodeToken = /^[A-Za-z0-9\-_]{4,}$/.test(w.text) && !isLabelPrefixToken(w.text);
         return isBelow && isAlignedX && isCodeToken;
       })
@@ -1319,6 +1597,77 @@ function attachFallbackValuesToBarcodes(barcodeItems, wordItems) {
   });
 }
 
+function sortDetectedItemsReadingOrder(items) {
+  return [...items].sort((a, b) => {
+    const midAY = (a.bbox.y0 + a.bbox.y1) / 2;
+    const midBY = (b.bbox.y0 + b.bbox.y1) / 2;
+    const lineThreshold = Math.max(
+      14,
+      ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.32
+    );
+    if (Math.abs(midAY - midBY) > lineThreshold) {
+      return midAY - midBY;
+    }
+    return a.bbox.x0 - b.bbox.x0;
+  });
+}
+
+async function applyDetectedPhotoText(imageUrl) {
+  const token = ++ocrRunToken;
+  clearPhotoLensState();
+  setPhotoLensStatus("Mendeteksi angka, huruf & barcode...", false);
+
+  try {
+    const img = await loadImageElement(imageUrl);
+    if (token !== ocrRunToken) return;
+
+    ocrNaturalWidth = img.naturalWidth || img.width;
+    ocrNaturalHeight = img.naturalHeight || img.height;
+
+    const { canvas: enhancedCanvas, scale, cleanGray } = buildEnhancedCanvasForOcr(img);
+
+    // Tahap 1 (Instan < 200ms): Deteksi & render kotak barcode terlebih dahulu agar layar tidak menunggu lama
+    const nativeBarcodes = await detectBarcodeBoxesWithNativeDetector(img);
+    if (token !== ocrRunToken) return;
+
+    const stripeBarcodes = detectStripeBarcodeRegions(enhancedCanvas, scale);
+    const barcodeItems = mergeDetectedBarcodes(nativeBarcodes, stripeBarcodes);
+
+    await Promise.all(
+      barcodeItems.map((bc) => decodeSingleBarcodeRegionFromImage(img, bc))
+    );
+    if (token !== ocrRunToken) return;
+
+    if (barcodeItems.length > 0) {
+      ocrWordItems = sortDetectedItemsReadingOrder(barcodeItems);
+      renderOcrWordBoxes();
+      setPhotoLensStatus("Barcode terdeteksi • Membaca angka & huruf...", false);
+    }
+
+    // Tahap 2: Deteksi angka & huruf (SN/PN/teks) dengan worker persisten
+    const tesseractWords = await detectWordBoxesWithTesseract(enhancedCanvas, scale, cleanGray);
+    if (token !== ocrRunToken) return;
+
+    const cleanWords = tesseractWords.filter(
+      (wordItem) => !isBoxOverlappingBarcode(wordItem.bbox, barcodeItems)
+    );
+
+    attachFallbackValuesToBarcodes(barcodeItems, cleanWords);
+
+    const combinedItems = sortDetectedItemsReadingOrder([...barcodeItems, ...cleanWords]);
+    ocrWordItems = combinedItems;
+    renderOcrWordBoxes();
+
+    if (ocrWordItems.length > 0) {
+      setPhotoLensStatus("Ketuk angka/barcode atau geser untuk memblok biru", false);
+    } else {
+      setPhotoLensStatus("Angka/huruf tidak terbaca, ketuk Foto Ulang", false);
+    }
+  } catch (err) {
+    if (token !== ocrRunToken) return;
+    setPhotoLensStatus("Gagal memproses foto, ketuk Foto Ulang", false);
+  }
+}
 function getRenderedImageMetrics() {
   if (!photoLensStage || !ocrNaturalWidth || !ocrNaturalHeight) return null;
   const stageRect = photoLensStage.getBoundingClientRect();
@@ -1604,7 +1953,7 @@ function getSelectedPhotoSelection() {
     const decodedBarcodeTexts = Array.from(
       new Set(selectedBarcodes.map((bc) => String(bc.text || "").trim()).filter(Boolean))
     );
-    const primaryFormat = selectedBarcodes[0].format || "CODE_39";
+    const primaryFormat = selectedBarcodes[0].format || "CODE_128";
 
     if (decodedBarcodeTexts.length > 0) {
       const extraDistinctWords = cleanedWordTokens.filter(
@@ -1641,73 +1990,6 @@ function getSelectedPhotoSelection() {
     format: joinedText ? detectScanFormatType(joinedText, "OCR Text") : "",
     hasSelection: true
   };
-}
-
-function getSelectedPhotoText() {
-  return getSelectedPhotoSelection().text;
-}
-
-async function applyDetectedPhotoText(imageUrl) {
-  const token = ++ocrRunToken;
-  clearPhotoLensState();
-  setPhotoLensStatus("Mendeteksi semua SN, angka & barcode...", false);
-
-  try {
-    const img = await loadImageElement(imageUrl);
-    if (token !== ocrRunToken) return;
-
-    ocrNaturalWidth = img.naturalWidth || img.width;
-    ocrNaturalHeight = img.naturalHeight || img.height;
-
-    const { canvas: enhancedCanvas, scale, cleanGray } = buildEnhancedCanvasForOcr(img);
-
-    const [nativeBarcodes, tesseractWords] = await Promise.all([
-      detectBarcodeBoxesWithNativeDetector(img),
-      detectWordBoxesWithTesseract(enhancedCanvas, scale, cleanGray)
-    ]);
-    if (token !== ocrRunToken) return;
-
-    const stripeBarcodes = detectStripeBarcodeRegions(enhancedCanvas, scale);
-    const barcodeItems = mergeDetectedBarcodes(nativeBarcodes, stripeBarcodes);
-
-    await Promise.all(
-      barcodeItems.map((bc) => decodeSingleBarcodeRegionFromImage(img, bc))
-    );
-    if (token !== ocrRunToken) return;
-
-    const cleanWords = tesseractWords.filter(
-      (wordItem) => !isBoxOverlappingBarcode(wordItem.bbox, barcodeItems)
-    );
-
-    attachFallbackValuesToBarcodes(barcodeItems, cleanWords);
-
-    const combinedItems = [...barcodeItems, ...cleanWords];
-
-    combinedItems.sort((a, b) => {
-      const midAY = (a.bbox.y0 + a.bbox.y1) / 2;
-      const midBY = (b.bbox.y0 + b.bbox.y1) / 2;
-      const lineThreshold = Math.max(
-        14,
-        ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.32
-      );
-      if (Math.abs(midAY - midBY) > lineThreshold) {
-        return midAY - midBY;
-      }
-      return a.bbox.x0 - b.bbox.x0;
-    });
-
-    ocrWordItems = combinedItems;
-    renderOcrWordBoxes();
-
-    if (ocrWordItems.length > 0) {
-      setPhotoLensStatus("Ketuk angka/barcode atau geser untuk memblok biru", false);
-    } else {
-      setPhotoLensStatus("Angka/huruf tidak terbaca, ketuk Foto Ulang", false);
-    }
-  } catch (err) {
-    if (token !== ocrRunToken) return;
-    setPhotoLensStatus("Gagal memproses foto, ketuk Foto Ulang", false);
-  }
 }
 
 function retakePhotoOnly() {
@@ -1771,7 +2053,7 @@ function copyPhotoText() {
     return;
   }
   writeTextToClipboardSafe(targetVal);
-  resetScan();
+  resetScan(true);
   statusBadge.textContent = "Teks Tersalin!";
 }
 
@@ -1787,17 +2069,29 @@ function createBarcodeFromPhotoText() {
     return;
   }
   writeTextToClipboardSafe(targetVal);
-  closePhotoLensPanel();
+  ocrRunToken += 1;
+  clearPhotoLensState();
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
+
   isScanLocked = false;
   lastScanned = "";
+  pendingScanData = null;
   resetCandidateScan();
 
+  const resolvedFormat = detectedFormat || detectScanFormatType(targetVal, "OCR Text");
   if (activeAppFeature === "scan-to-excel") {
-    addScannedItemToExcel(targetVal, detectedFormat || detectScanFormatType(targetVal, "OCR Text"));
+    currentRoute = "scan-to-excel-scan";
+    generateQR(targetVal, resolvedFormat);
     return;
   }
 
-  generateQR(targetVal, detectedFormat || detectScanFormatType(targetVal, "OCR Text"));
+  currentRoute = activeAppFeature;
+  generateQR(targetVal, resolvedFormat);
   completeScan();
 }
 
@@ -1825,7 +2119,7 @@ if (photoGalleryInput) {
   photoGalleryInput.addEventListener("change", handlePhotoFileSelected);
 }
 
-// 7. Fitur Scan to Excel (Perekam Baris Otomatis + Generator File Excel .xlsx Murni)
+// 8. Fitur Scan to Excel (Multi-Kolom, Urutan Kolom Otomatis & Generator .xlsx Murni)
 function escapeHtmlSafe(str) {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -1844,74 +2138,128 @@ function showExcelScanToast(msg) {
   }
   excelToastTimer = setTimeout(() => {
     excelScanToast.classList.remove("visible");
-  }, 1600);
+  }, 1700);
 }
 
-function addScannedItemToExcel(rawText, formatName = "Scan") {
-  const cleanText = String(rawText || "").trim();
-  if (!cleanText) return;
+function selectExcelTargetColumn(colIdx) {
+  const task = getActiveExcelTask();
+  if (!task) return;
+  if (colIdx < 0 || colIdx >= task.columns.length) return;
+  task.activeColIndex = colIdx;
+  saveExcelTasksToStorage();
+  renderExcelSessionTable();
+}
 
-  const now = Date.now();
-  if (cleanText === lastExcelScanCode && now - lastExcelScanTime < 1800) {
-    return;
+function getExcelNextTargetInfo(task) {
+  if (!task || !Array.isArray(task.columns) || task.columns.length === 0) {
+    return { colIndex: 0, colName: "Kolom 1", rowNumber: 1 };
+  }
+  const colIndex = Math.max(0, Math.min(task.columns.length - 1, task.activeColIndex || 0));
+  const colName = task.columns[colIndex] || `Kolom ${colIndex + 1}`;
+  const lastRow = task.rows.length > 0 ? task.rows[task.rows.length - 1] : null;
+  const willAppendToLastRow =
+    task.sequentialColumns &&
+    task.columns.length > 1 &&
+    colIndex > 0 &&
+    lastRow &&
+    !lastRow[colIndex];
+
+  const rowNumber = willAppendToLastRow ? task.rows.length : task.rows.length + 1;
+  return { colIndex, colName, rowNumber };
+}
+
+function addScannedItemToExcel(rawText) {
+  const cleanText = String(rawText || "").trim();
+  const task = getActiveExcelTask();
+  if (!cleanText || !task) return;
+
+  const colCount = Math.max(1, task.columns.length);
+  const targetCol = Math.max(0, Math.min(colCount - 1, task.activeColIndex || 0));
+  const targetColName = task.columns[targetCol] || `Kolom ${targetCol + 1}`;
+
+  if (task.sequentialColumns && colCount > 1) {
+    const lastRow = task.rows.length > 0 ? task.rows[task.rows.length - 1] : null;
+    if (targetCol > 0 && lastRow && !lastRow[targetCol]) {
+      lastRow[targetCol] = cleanText;
+    } else {
+      const freshRow = new Array(colCount).fill("");
+      freshRow[targetCol] = cleanText;
+      task.rows.push(freshRow);
+    }
+    task.activeColIndex = (targetCol + 1) % colCount;
+  } else {
+    const freshRow = new Array(colCount).fill("");
+    freshRow[targetCol] = cleanText;
+    task.rows.push(freshRow);
   }
 
-  lastExcelScanCode = cleanText;
-  lastExcelScanTime = now;
-  resetCandidateScan();
-  triggerScanFeedback();
-
-  const timeStr = new Date().toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
-
-  excelSessionItems.push({
-    code: cleanText,
-    format: formatName,
-    time: timeStr
-  });
-
+  saveExcelTasksToStorage();
   renderExcelSessionTable();
-  showExcelScanToast(`+1 Masuk Excel: ${cleanText}`);
+
+  const nextColName = task.columns[task.activeColIndex] || task.columns[0];
+  const nextHint =
+    task.sequentialColumns && colCount > 1 ? ` • Lanjut: ${nextColName}` : "";
+  showExcelScanToast(`Masuk [${targetColName}]: ${cleanText}${nextHint}`);
 }
 
 function removeExcelSessionRow(index) {
-  if (index < 0 || index >= excelSessionItems.length) return;
-  excelSessionItems.splice(index, 1);
-  renderExcelSessionTable();
-}
-
-function clearExcelSessionRows() {
-  if (excelSessionItems.length === 0) return;
-  excelSessionItems = [];
-  lastExcelScanCode = "";
-  lastExcelScanTime = 0;
+  const task = getActiveExcelTask();
+  if (!task || index < 0 || index >= task.rows.length) return;
+  task.rows.splice(index, 1);
+  if (task.rows.length === 0) {
+    task.activeColIndex = 0;
+  }
+  saveExcelTasksToStorage();
   renderExcelSessionTable();
 }
 
 function renderExcelSessionTable() {
+  const task = getActiveExcelTask();
+  if (!task) return;
+
+  if (excelActiveTaskName) {
+    excelActiveTaskName.textContent = task.name;
+  }
   if (excelRowCount) {
-    excelRowCount.textContent = `${excelSessionItems.length} item`;
+    excelRowCount.textContent = `${task.rows.length} baris`;
   }
   if (excelDownloadBtn) {
-    excelDownloadBtn.disabled = excelSessionItems.length === 0;
+    excelDownloadBtn.disabled = task.rows.length === 0;
   }
+
+  if (excelTargetColBar) {
+    excelTargetColBar.innerHTML = task.columns
+      .map((colName, idx) => {
+        const isActive = idx === (task.activeColIndex || 0);
+        const prefix = isActive ? "Target: " : "";
+        return `<button type="button" class="excel-col-pill${isActive ? " active" : ""}" onclick="selectExcelTargetColumn(${idx})">${prefix}${idx + 1}. ${escapeHtmlSafe(colName)}</button>`;
+      })
+      .join("");
+  }
+
+  if (excelRowsThead) {
+    const thCols = task.columns.map((c) => `<th>${escapeHtmlSafe(c)}</th>`).join("");
+    excelRowsThead.innerHTML = `<tr><th>No</th>${thCols}<th>Aksi</th></tr>`;
+  }
+
   if (!excelRowsTbody) return;
 
-  if (excelSessionItems.length === 0) {
-    excelRowsTbody.innerHTML =
-      '<tr class="excel-empty-row"><td colspan="4">Belum ada data. Arahkan kamera ke barcode/QR untuk mulai mencatat.</td></tr>';
+  if (task.rows.length === 0) {
+    excelRowsTbody.innerHTML = `<tr class="excel-empty-row"><td colspan="${task.columns.length + 2}">Belum ada data. Arahkan kamera ke barcode/QR untuk mulai mencatat.</td></tr>`;
     return;
   }
 
-  const rowsHtml = excelSessionItems
-    .map((item, idx) => {
+  const rowsHtml = task.rows
+    .map((rowArr, idx) => {
+      const cellsHtml = task.columns
+        .map((_, cIdx) => {
+          const val = rowArr[cIdx] || "";
+          return `<td>${val ? `<strong>${escapeHtmlSafe(val)}</strong>` : '<span style="color:#94a3b8;">-</span>'}</td>`;
+        })
+        .join("");
       return `<tr>
         <td>${idx + 1}</td>
-        <td><strong>${escapeHtmlSafe(item.code)}</strong></td>
-        <td>${escapeHtmlSafe(item.format)}</td>
+        ${cellsHtml}
         <td><button type="button" class="excel-del-row-btn" onclick="removeExcelSessionRow(${idx})">Hapus</button></td>
       </tr>`;
     })
@@ -2022,15 +2370,14 @@ function buildStoredZipBlob(entries) {
 }
 
 function exportScannedListToExcel() {
-  if (excelSessionItems.length === 0) return;
+  const task = getActiveExcelTask();
+  if (!task || task.rows.length === 0) return;
 
   const sheetRows = [
-    ["No", "Hasil Scan", "Format", "Waktu Scan"],
-    ...excelSessionItems.map((item, idx) => [
+    ["No", ...task.columns],
+    ...task.rows.map((rowArr, idx) => [
       idx + 1,
-      item.code,
-      item.format,
-      item.time
+      ...task.columns.map((_, cIdx) => rowArr[cIdx] || "")
     ])
   ];
 
@@ -2049,6 +2396,13 @@ function exportScannedListToExcel() {
       return `<row r="${rowNum}">${cellsXml}</row>`;
     })
     .join("");
+
+  const colsXml = [
+    `<col min="1" max="1" width="8" customWidth="1"/>`,
+    ...task.columns.map(
+      (_, idx) => `<col min="${idx + 2}" max="${idx + 2}" width="28" customWidth="1"/>`
+    )
+  ].join("\n    ");
 
   const zipEntries = [
     {
@@ -2089,10 +2443,7 @@ function exportScannedListToExcel() {
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <cols>
-    <col min="1" max="1" width="8" customWidth="1"/>
-    <col min="2" max="2" width="32" customWidth="1"/>
-    <col min="3" max="3" width="16" customWidth="1"/>
-    <col min="4" max="4" width="16" customWidth="1"/>
+    ${colsXml}
   </cols>
   <sheetData>${rowsXml}</sheetData>
 </worksheet>`
@@ -2107,15 +2458,17 @@ function exportScannedListToExcel() {
   ).padStart(2, "0")}_${String(now.getHours()).padStart(2, "0")}${String(
     now.getMinutes()
   ).padStart(2, "0")}`;
+  const safeBaseName = task.name.replace(/[^A-Za-z0-9_\-]/g, "_") || "Hasil_Scan";
 
   const link = document.createElement("a");
   link.href = url;
-  link.download = `Hasil_Scan_${stamp}.xlsx`;
+  link.download = `${safeBaseName}_${stamp}.xlsx`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
+
 function toggleAutoZoom() {
   isAutoZoomEnabled = !isAutoZoomEnabled;
   if (autoZoomBtn) {
@@ -2179,7 +2532,7 @@ function startAutoZoomCycle() {
   }, 3600);
 }
 
-// Kontrol Bottom Sheet Hasil Scan & Full Screen QR
+// 9. Kontrol Bottom Sheet Hasil Scan & Full Screen QR
 function openScanSheet(cleanText, formatName) {
   scannedItemsCount += 1;
   if (sheetScannedCount) {
@@ -2191,12 +2544,33 @@ function openScanSheet(cleanText, formatName) {
   if (sheetFormatValue) {
     sheetFormatValue.textContent = formatName;
   }
+
+  if (activeAppFeature === "scan-to-excel") {
+    const task = getActiveExcelTask();
+    const targetInfo = getExcelNextTargetInfo(task);
+    if (sheetExcelColRow) {
+      sheetExcelColRow.style.display = "flex";
+    }
+    if (sheetExcelColValue) {
+      sheetExcelColValue.textContent = `${targetInfo.colName} (Baris #${targetInfo.rowNumber})`;
+    }
+    statusBadge.textContent = "Siap Masuk Excel";
+  } else {
+    if (sheetExcelColRow) {
+      sheetExcelColRow.style.display = "none";
+    }
+  }
+
+  const wasOpen = scanResultSheet && scanResultSheet.classList.contains("open");
   if (scanResultSheet) {
     scanResultSheet.style.transform = "";
     scanResultSheet.classList.add("open");
   }
   if (sheetBackdrop) {
     sheetBackdrop.classList.add("open");
+  }
+  if (!wasOpen) {
+    pushAppHistoryState(`${currentRoute}:sheet`);
   }
 }
 
@@ -2210,10 +2584,15 @@ function closeScanSheetOnly() {
   }
 }
 
-function dismissScanSheet() {
+function dismissScanSheet(fromBack = false) {
+  if (!fromBack && scanResultSheet && scanResultSheet.classList.contains("open")) {
+    navigateBackOneStep();
+    return;
+  }
   closeScanSheetOnly();
   isScanLocked = false;
   lastScanned = "";
+  pendingScanData = null;
   resetCandidateScan();
   statusBadge.textContent = "Scan Dibatalkan";
   statusBadge.classList.remove("ready");
@@ -2221,11 +2600,32 @@ function dismissScanSheet() {
 }
 
 function completeScan() {
-  if (!lastScanned) return;
+  const activeCode = (pendingScanData && pendingScanData.text) || lastScanned;
+  if (!activeCode) return;
+
+  if (activeAppFeature === "scan-to-excel") {
+    addScannedItemToExcel(activeCode);
+    closeScanSheetOnly();
+    isScanLocked = false;
+    lastScanned = "";
+    pendingScanData = null;
+    resetCandidateScan();
+    currentRoute = "scan-to-excel-scan";
+    try {
+      window.history.replaceState({ appRoute: "scan-to-excel-scan" }, "");
+    } catch (err) {}
+    resumeCameraForNextScan();
+    return;
+  }
+
   closeScanSheetOnly();
   if (fullscreenQrModal) {
     fullscreenQrModal.classList.add("open");
     fullscreenQrModal.setAttribute("aria-hidden", "false");
+    currentRoute = `${activeAppFeature}:qr-modal`;
+    try {
+      window.history.replaceState({ appRoute: currentRoute }, "");
+    } catch (err) {}
   }
 }
 
@@ -2297,31 +2697,29 @@ function generateQR(text, formatName = "Scan") {
   const cleanText = text.trim();
   if (!cleanText || isScanLocked || cleanText === lastScanned) return;
 
-  if (activeAppFeature === "scan-to-excel") {
-    addScannedItemToExcel(cleanText, formatName);
-    return;
-  }
-
   isScanLocked = true;
   lastScanned = cleanText;
+  pendingScanData = { text: cleanText, format: formatName };
   resetCandidateScan();
   pauseCameraForSingleScan();
   triggerScanFeedback();
 
   decodedTextEl.textContent = cleanText;
   formatInfoEl.textContent = `Format terbaca: ${formatName}`;
-  statusBadge.textContent = "Tersedia Disalin";
+  statusBadge.textContent = activeAppFeature === "scan-to-excel" ? "Siap Masuk Excel" : "Tersedia Disalin";
   statusBadge.classList.add("ready");
 
-  qrWrapper.innerHTML = "";
-  new QRCode(qrWrapper, {
-    text: cleanText,
-    width: 260,
-    height: 260,
-    colorDark: "#000000",
-    colorLight: "#ffffff",
-    correctLevel: QRCode.CorrectLevel.M
-  });
+  if (activeAppFeature !== "scan-to-excel") {
+    qrWrapper.innerHTML = "";
+    new QRCode(qrWrapper, {
+      text: cleanText,
+      width: 260,
+      height: 260,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
 
   openScanSheet(cleanText, formatName);
 }
@@ -2331,19 +2729,12 @@ function handleManualSubmit() {
     const rawVal = scannerInput.value.trim();
     const detectedFmt = detectScanFormatType(rawVal);
 
-    if (activeAppFeature === "scan-to-excel") {
-      addScannedItemToExcel(rawVal, detectedFmt);
-      scannerInput.value = "";
-      scannerInput.focus();
-      return;
-    }
-
     isScanLocked = false;
     lastScanned = "";
+    pendingScanData = null;
     resetCandidateScan();
     generateQR(rawVal, detectedFmt);
     scannerInput.value = "";
-    scannerInput.focus();
   }
 }
 
@@ -2359,7 +2750,13 @@ let physicalScannerBuffer = "";
 let physicalScannerTimer = null;
 
 document.addEventListener("keydown", (e) => {
-  if (activeAppFeature === "menu") return;
+  if (
+    activeAppFeature === "menu" ||
+    currentRoute === "scan-to-excel-hub" ||
+    currentRoute === "scan-to-excel-new"
+  ) {
+    return;
+  }
   const activeTag = document.activeElement ? document.activeElement.tagName : "";
   if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -2370,13 +2767,9 @@ document.addEventListener("keydown", (e) => {
       physicalScannerBuffer = "";
       const detectedFmt = detectScanFormatType(code);
 
-      if (activeAppFeature === "scan-to-excel") {
-        addScannedItemToExcel(code, detectedFmt);
-        return;
-      }
-
       isScanLocked = false;
       lastScanned = "";
+      pendingScanData = null;
       resetCandidateScan();
       generateQR(code, detectedFmt);
     }
@@ -2395,10 +2788,14 @@ document.addEventListener("keydown", (e) => {
 
 function copyText() {
   if (!lastScanned) return;
-  navigator.clipboard.writeText(lastScanned);
+  writeTextToClipboardSafe(lastScanned);
   statusBadge.textContent = "Teks Tersalin!";
   setTimeout(() => {
-    statusBadge.textContent = isScanLocked ? "Tersedia Disalin" : "QR Code Siap Scan";
+    statusBadge.textContent = isScanLocked
+      ? activeAppFeature === "scan-to-excel"
+        ? "Siap Masuk Excel"
+        : "Tersedia Disalin"
+      : "QR Code Siap Scan";
   }, 1500);
 }
 
@@ -2414,7 +2811,11 @@ function downloadQR() {
   link.click();
 }
 
-function resetScan() {
+function resetScan(fromBack = false) {
+  if (!fromBack && fullscreenQrModal && fullscreenQrModal.classList.contains("open")) {
+    navigateBackOneStep();
+    return;
+  }
   closeFullscreenQrModal();
   closeScanSheetOnly();
   ocrRunToken += 1;
@@ -2427,6 +2828,7 @@ function resetScan() {
   }
   isScanLocked = false;
   lastScanned = "";
+  pendingScanData = null;
   resetCandidateScan();
   decodedTextEl.textContent = "-";
   formatInfoEl.textContent = "Format: -";
@@ -2440,7 +2842,7 @@ function resetScan() {
   }
 }
 
-// 8. Inisialisasi Kamera Scanner Dual-Engine (ZXing 1D/2D + Native BarcodeDetector Resolusi Penuh)
+// 10. Inisialisasi Kamera Scanner Dual-Engine (ZXing 1D/2D + Native BarcodeDetector Resolusi Penuh)
 function getSupportedFormats() {
   const f = typeof Html5QrcodeSupportedFormats !== "undefined" ? Html5QrcodeSupportedFormats : {};
   const list = [
@@ -2678,7 +3080,14 @@ function getRequiredConfirmHits(fmt, cleanText) {
 }
 
 function onScanSuccess(decodedText, decodedResult) {
-  if (activeAppFeature === "menu" || activeAppFeature === "text-to-qr") return;
+  if (
+    activeAppFeature === "menu" ||
+    activeAppFeature === "text-to-qr" ||
+    currentRoute === "scan-to-excel-hub" ||
+    currentRoute === "scan-to-excel-new"
+  ) {
+    return;
+  }
   if (isScanLocked) return;
 
   const cleanText = String(decodedText || "").trim();
@@ -2703,11 +3112,7 @@ function onScanSuccess(decodedText, decodedResult) {
 
   const requiredHits = getRequiredConfirmHits(fmt, cleanText);
   if (nextHits >= requiredHits) {
-    if (activeAppFeature === "scan-to-excel") {
-      addScannedItemToExcel(cleanText, fmt);
-    } else {
-      generateQR(cleanText, fmt);
-    }
+    generateQR(cleanText, fmt);
   }
 }
 
@@ -2766,6 +3171,8 @@ async function runNativeLiveFrameScan() {
     isScanLocked ||
     activeAppFeature === "menu" ||
     activeAppFeature === "text-to-qr" ||
+    currentRoute === "scan-to-excel-hub" ||
+    currentRoute === "scan-to-excel-new" ||
     document.visibilityState !== "visible" ||
     (photoLensOverlay && photoLensOverlay.classList.contains("open"))
   ) {
