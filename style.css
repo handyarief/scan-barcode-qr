@@ -73,6 +73,27 @@ header {
   margin-top: 2px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.back-menu-btn {
+  background: #e2e8f0;
+  color: #1e293b;
+  padding: 8px 11px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+
+.back-menu-btn:hover:not(:disabled) {
+  background: #cbd5e1;
+}
+
 #install-btn {
   display: none;
   background: var(--success);
@@ -83,6 +104,100 @@ header {
 
 #install-btn:hover {
   background: #14632b;
+}
+
+/* Menu Utama Kotak-Kotak Warna-Warni Sebelum Scan */
+.home-menu-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8px 0 24px;
+}
+
+.home-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.menu-tile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 22px 14px;
+  border-radius: 18px;
+  border: none;
+  color: #ffffff;
+  min-height: 158px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.menu-tile-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+  filter: brightness(1.04);
+}
+
+.menu-tile-card:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.menu-tile-card.tile-blue {
+  background: linear-gradient(135deg, #2563eb 0%, #0f62fe 100%);
+}
+
+.menu-tile-card.tile-blue:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #0353e9 100%);
+}
+
+.menu-tile-card.tile-green {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+}
+
+.menu-tile-card.tile-green:hover:not(:disabled) {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+}
+
+.menu-tile-card.tile-purple {
+  grid-column: span 2;
+  min-height: 142px;
+  background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+}
+
+.menu-tile-card.tile-purple:hover:not(:disabled) {
+  background: linear-gradient(135deg, #6d28d9 0%, #7e22ce 100%);
+}
+
+.tile-icon-box {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: #ffffff;
+}
+
+.tile-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+}
+
+.tile-desc {
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 4px;
+  line-height: 1.35;
 }
 
 .card {
@@ -128,6 +243,12 @@ header {
   min-height: 520px;
   object-fit: cover !important;
   display: block;
+}
+
+.scanner-card.excel-mode .scanner-viewport,
+.scanner-card.excel-mode #reader,
+.scanner-card.excel-mode #reader video {
+  min-height: 310px;
 }
 
 /* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
@@ -287,6 +408,34 @@ header {
   display: none;
 }
 
+/* Toast Cepat Saat Scan Masuk ke Excel */
+.excel-scan-toast {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  z-index: 9;
+  background: rgba(22, 163, 74, 0.94);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.excel-scan-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* Overlay Foto Ala Google Lens: Foto Penuh + Blok Biru Transparan + Menu Kapsul Mengambang */
 .photo-lens-overlay {
   display: none;
@@ -394,37 +543,37 @@ header {
 .ocr-word-box {
   position: absolute;
   border-radius: 4px;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(125, 211, 252, 0.45);
+  background: rgba(56, 189, 248, 0.14);
+  border: 1.25px solid rgba(56, 189, 248, 0.72);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-word-box:hover {
-  background: rgba(59, 130, 246, 0.22);
-  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(96, 165, 250, 0.92);
 }
 
 /* Kotak Area Barcode Terpisah di Atas Foto */
 .ocr-barcode-box {
   position: absolute;
   border-radius: 5px;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(125, 211, 252, 0.55);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1.25px solid rgba(56, 189, 248, 0.72);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-barcode-box:hover {
-  background: rgba(59, 130, 246, 0.22);
-  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(96, 165, 250, 0.92);
 }
 
 .ocr-word-box.selected,
 .ocr-barcode-box.selected {
-  background: rgba(37, 99, 235, 0.34);
+  background: rgba(37, 99, 235, 0.36);
   border: 1.5px solid #60a5fa;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.32);
   z-index: 2;
 }
 
@@ -461,7 +610,7 @@ header {
   pointer-events: none;
 }
 
-/* Menu Kapsul Mengambang di Atas Blok Biru (Salin | Buat Barkode) */
+/* Menu Kapsul Mengambang di Atas Blok Biru (Salin | Buat Barkode / Buat QR) */
 .photo-lens-action-bar {
   position: absolute;
   z-index: 20;
@@ -534,7 +683,7 @@ header {
   display: none;
 }
 
-/* Bar Bawah: Ikon Lama Tetap Sama + 1 Tombol Jepret Foto Bulat */
+/* Bar Bawah: Ikon Kontrol Kamera */
 .scan-bottom-controls {
   position: absolute;
   bottom: 22px;
@@ -582,7 +731,7 @@ header {
   cursor: not-allowed;
 }
 
-/* Tombol Foto Bulat: Disamakan Warna & Gaya dengan Ikon Lain */
+/* Tombol Foto Bulat */
 .photo-shutter-circle-btn {
   pointer-events: auto;
   width: 44px;
@@ -668,6 +817,136 @@ header {
 
 .manual-input input:focus {
   border-color: var(--primary);
+}
+
+/* Panel Sesi Scan to Excel */
+.excel-session-panel {
+  background: #ffffff;
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.excel-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.excel-panel-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.excel-panel-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.excel-count-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.excel-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.excel-clear-btn {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  border-radius: 7px;
+}
+
+.excel-clear-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.excel-export-btn {
+  background: #16a34a;
+  color: #ffffff;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  border-radius: 7px;
+}
+
+.excel-export-btn:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.excel-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.excel-table-wrap {
+  max-height: 170px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.excel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.excel-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.excel-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.excel-table tr:last-child td {
+  border-bottom: none;
+}
+
+.excel-empty-row td {
+  text-align: center;
+  color: var(--muted);
+  padding: 16px 10px;
+  font-size: 0.78rem;
+}
+
+.excel-del-row-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  border-radius: 5px;
+}
+
+.excel-del-row-btn:hover:not(:disabled) {
+  background: #fecaca;
 }
 
 button {

@@ -17,13 +17,17 @@ const zoomToggleBtn = document.getElementById("zoom-toggle-btn");
 const autoZoomBtn = document.getElementById("auto-zoom-btn");
 const keyboardToggleBtn = document.getElementById("keyboard-toggle-btn");
 const manualPanel = document.getElementById("manual-panel");
+const manualSubmitBtn = document.getElementById("manual-submit-btn");
 const photoShutterBtn = document.getElementById("photo-shutter-btn");
+const galleryPhotoBtn = document.getElementById("gallery-photo-btn");
 const photoCaptureInput = document.getElementById("photo-capture-input");
+const photoGalleryInput = document.getElementById("photo-gallery-input");
 const photoLensOverlay = document.getElementById("photo-lens-overlay");
 const photoLensStage = document.getElementById("photo-lens-stage");
 const capturedPhotoPreview = document.getElementById("captured-photo-preview");
 const photoOcrLayer = document.getElementById("photo-ocr-layer");
 const photoLensActionBar = document.getElementById("photo-lens-action-bar");
+const lensCreateQrBtn = document.getElementById("lens-create-qr-btn");
 const photoLensStatus = document.getElementById("photo-lens-status");
 const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
 const scanResultSheet = document.getElementById("scan-result-sheet");
@@ -33,11 +37,31 @@ const sheetBarcodeValue = document.getElementById("sheet-barcode-value");
 const sheetFormatValue = document.getElementById("sheet-format-value");
 const fullscreenQrModal = document.getElementById("fullscreen-qr-modal");
 
+// Elemen Menu Utama & Sesi Scan to Excel
+const appHeaderTitle = document.getElementById("app-header-title");
+const appHeaderSubtitle = document.getElementById("app-header-subtitle");
+const backMenuBtn = document.getElementById("back-menu-btn");
+const homeMenuView = document.getElementById("home-menu-view");
+const scannerCard = document.getElementById("scanner-card");
+const scanTopOverlay = document.getElementById("scan-top-overlay");
+const excelScanToast = document.getElementById("excel-scan-toast");
+const excelSessionPanel = document.getElementById("excel-session-panel");
+const excelRowCount = document.getElementById("excel-row-count");
+const excelDownloadBtn = document.getElementById("excel-download-btn");
+const excelRowsTbody = document.getElementById("excel-rows-tbody");
+
+let activeAppFeature = "menu"; // "menu" | "1d-to-qr" | "scan-to-excel" | "text-to-qr"
+let excelSessionItems = [];
+let lastExcelScanCode = "";
+let lastExcelScanTime = 0;
+let excelToastTimer = null;
+
 let lastScanned = "";
 let deferredPrompt = null;
 let isFlashOn = false;
 let isFlashSupported = false;
 let isCameraRunning = false;
+let isCameraStarting = false;
 let isScanLocked = false;
 let audioCtx = null;
 let autoFocusTimer = null;
@@ -133,7 +157,128 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// 4. Getar & bunyi beep singkat saat scan berhasil
+// 4. Navigasi Menu Utama Sebelum Scan
+function openFeatureMenu(feature) {
+  const validFeatures = ["1d-to-qr", "scan-to-excel", "text-to-qr"];
+  if (!validFeatures.includes(feature)) return;
+
+  activeAppFeature = feature;
+  closeFullscreenQrModal();
+  closeScanSheetOnly();
+  ocrRunToken += 1;
+  clearPhotoLensState();
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
+
+  isScanLocked = false;
+  lastScanned = "";
+  resetCandidateScan();
+
+  if (homeMenuView) {
+    homeMenuView.style.display = "none";
+  }
+  if (scannerCard) {
+    scannerCard.style.display = "flex";
+    scannerCard.classList.toggle("excel-mode", feature === "scan-to-excel");
+  }
+  if (backMenuBtn) {
+    backMenuBtn.style.display = "inline-block";
+  }
+
+  if (feature === "1d-to-qr") {
+    if (appHeaderTitle) appHeaderTitle.textContent = "1D to QR";
+    if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Semua Barcode 1D/2D atau scanner fisik";
+    if (scanTopOverlay) scanTopOverlay.style.display = "";
+    if (excelSessionPanel) excelSessionPanel.style.display = "none";
+    if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
+    if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
+    if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat Barkode";
+    setScanMode(currentScanMode || "full");
+  } else if (feature === "scan-to-excel") {
+    if (appHeaderTitle) appHeaderTitle.textContent = "Scan to Excel";
+    if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Scan biasa, hasil langsung masuk ke Excel";
+    if (scanTopOverlay) scanTopOverlay.style.display = "";
+    if (excelSessionPanel) excelSessionPanel.style.display = "flex";
+    if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
+    if (manualSubmitBtn) manualSubmitBtn.textContent = "Tambah Excel";
+    if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Masuk Excel";
+    setScanMode(currentScanMode || "full");
+    renderExcelSessionTable();
+  } else if (feature === "text-to-qr") {
+    if (appHeaderTitle) appHeaderTitle.textContent = "Text to QR";
+    if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Foto teks/SN lalu pilih blok menjadi QR";
+    if (scanTopOverlay) scanTopOverlay.style.display = "none";
+    if (excelSessionPanel) excelSessionPanel.style.display = "none";
+    if (galleryPhotoBtn) galleryPhotoBtn.style.display = "inline-flex";
+    if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
+    if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat QR";
+    if (scannerViewport) {
+      scannerViewport.classList.remove("mode-square", "mode-bar");
+      scannerViewport.classList.add("mode-full");
+    }
+  }
+
+  ensureCameraStarted();
+}
+
+async function backToMainMenu() {
+  activeAppFeature = "menu";
+  closeFullscreenQrModal();
+  closeScanSheetOnly();
+  ocrRunToken += 1;
+  clearPhotoLensState();
+
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
+  if (zoomBox) {
+    zoomBox.classList.remove("open");
+  }
+  if (zoomToggleBtn) {
+    zoomToggleBtn.classList.remove("active");
+  }
+  if (manualPanel) {
+    manualPanel.classList.remove("open");
+  }
+  if (keyboardToggleBtn) {
+    keyboardToggleBtn.classList.remove("active");
+  }
+
+  isScanLocked = false;
+  lastScanned = "";
+  resetCandidateScan();
+
+  if (scannerCard) {
+    scannerCard.style.display = "none";
+    scannerCard.classList.remove("excel-mode");
+  }
+  if (excelSessionPanel) {
+    excelSessionPanel.style.display = "none";
+  }
+  if (backMenuBtn) {
+    backMenuBtn.style.display = "none";
+  }
+  if (homeMenuView) {
+    homeMenuView.style.display = "flex";
+  }
+  if (appHeaderTitle) {
+    appHeaderTitle.textContent = "Scan Barcode → QR Code";
+  }
+  if (appHeaderSubtitle) {
+    appHeaderSubtitle.textContent = "Pilih fitur pemindaian di bawah";
+  }
+
+  await stopCameraGracefully();
+}
+
+// 5. Getar & bunyi beep singkat saat scan berhasil
 function triggerScanFeedback() {
   try {
     if (navigator.vibrate) {
@@ -229,8 +374,7 @@ function toggleManualPanel() {
   }
 }
 
-// Fitur Foto Ala Google Lens:
-// Klik Foto -> Langsung Tampil Foto + Blok Angka/Huruf & Blok Barcode Rapi -> Menu Mengambang "Salin" & "Buat Barkode"
+// 6. Fitur Foto Ala Google Lens & OCR Akurasi Tinggi (Normalisasi Lokal + Anti-Garis Tabel + Ink Trimming)
 function setPhotoLensStatus(msg, hide = false) {
   if (!photoLensStatus) return;
   photoLensStatus.textContent = msg;
@@ -270,7 +414,7 @@ function closePhotoLensPanel() {
   if (photoShutterBtn) {
     photoShutterBtn.classList.remove("active");
   }
-  if (!isScanLocked) {
+  if (!isScanLocked && activeAppFeature !== "menu") {
     resumeCameraForNextScan();
   }
 }
@@ -300,11 +444,64 @@ function loadImageElement(imageUrl) {
   });
 }
 
+function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
+  // Hapus garis tabel horizontal panjang agar tidak menyatu dengan karakter SN di atas/bawahnya
+  const minHorizRun = Math.max(80, Math.floor(width * 0.28));
+  for (let y = 1; y < height - 1; y += 1) {
+    const rowOffset = y * width;
+    let runStart = -1;
+    for (let x = 0; x <= width; x += 1) {
+      const isDark = x < width && grayBuf[rowOffset + x] < 155;
+      if (isDark) {
+        if (runStart < 0) runStart = x;
+      } else if (runStart >= 0) {
+        const runLen = x - runStart;
+        if (runLen >= minHorizRun) {
+          for (let rx = runStart; rx < x; rx += 1) {
+            const aboveVal = grayBuf[(y - 1) * width + rx];
+            const belowVal = grayBuf[(y + 1) * width + rx];
+            const isTouchingChar = aboveVal < 130 && belowVal < 130;
+            if (!isTouchingChar) {
+              grayBuf[rowOffset + rx] = 250;
+            }
+          }
+        }
+        runStart = -1;
+      }
+    }
+  }
+
+  // Hapus garis batas kolom vertikal panjang agar tidak melebar ke kolom samping
+  const minVertRun = Math.max(90, Math.floor(height * 0.28));
+  for (let x = 1; x < width - 1; x += 1) {
+    let runStart = -1;
+    for (let y = 0; y <= height; y += 1) {
+      const isDark = y < height && grayBuf[y * width + x] < 155;
+      if (isDark) {
+        if (runStart < 0) runStart = y;
+      } else if (runStart >= 0) {
+        const runLen = y - runStart;
+        if (runLen >= minVertRun) {
+          for (let ry = runStart; ry < y; ry += 1) {
+            const leftVal = grayBuf[ry * width + (x - 1)];
+            const rightVal = grayBuf[ry * width + (x + 1)];
+            const isTouchingChar = leftVal < 130 && rightVal < 130;
+            if (!isTouchingChar) {
+              grayBuf[ry * width + x] = 250;
+            }
+          }
+        }
+        runStart = -1;
+      }
+    }
+  }
+}
+
 function buildEnhancedCanvasForOcr(img) {
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   const maxDim = Math.max(naturalW, naturalH, 1);
-  const targetMaxDim = 2000;
+  const targetMaxDim = 2200;
   const scale = maxDim > targetMaxDim ? targetMaxDim / maxDim : 1;
 
   const width = Math.max(1, Math.round(naturalW * scale));
@@ -313,35 +510,92 @@ function buildEnhancedCanvasForOcr(img) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return { canvas, scale: 1 };
+  if (!ctx) return { canvas, scale: 1, cleanGray: null, width, height };
 
   ctx.drawImage(img, 0, 0, width, height);
   try {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
     const len = data.length;
-    const grayBuf = new Uint8Array(width * height);
-    let minL = 255;
-    let maxL = 0;
+    const rawGray = new Uint8Array(width * height);
 
     for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      const lum = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-      grayBuf[p] = lum;
-      if (lum < minL) minL = lum;
-      if (lum > maxL) maxL = lum;
+      rawGray[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     }
 
-    const range = Math.max(40, maxL - minL);
+    // Estimasi pencahayaan latar lokal (grid tile) agar area redup di tengah kertas ikut terang merata
+    const tileSize = Math.max(24, Math.round(Math.min(width, height) / 18));
+    const gridW = Math.max(1, Math.ceil(width / tileSize));
+    const gridH = Math.max(1, Math.ceil(height / tileSize));
+    const tileBg = new Float32Array(gridW * gridH);
+
+    for (let gy = 0; gy < gridH; gy += 1) {
+      const y0 = gy * tileSize;
+      const y1 = Math.min(height, y0 + tileSize);
+      for (let gx = 0; gx < gridW; gx += 1) {
+        const x0 = gx * tileSize;
+        const x1 = Math.min(width, x0 + tileSize);
+        let maxTileLum = 60;
+        let sumTop = 0;
+        let countTop = 0;
+
+        for (let y = y0; y < y1; y += 2) {
+          const rOff = y * width;
+          for (let x = x0; x < x1; x += 2) {
+            const v = rawGray[rOff + x];
+            if (v > maxTileLum) maxTileLum = v;
+            sumTop += v;
+            countTop += 1;
+          }
+        }
+        const meanTile = countTop > 0 ? sumTop / countTop : maxTileLum;
+        tileBg[gy * gridW + gx] = Math.max(65, maxTileLum * 0.72 + meanTile * 0.28);
+      }
+    }
+
+    const normGray = new Uint8Array(width * height);
+    for (let y = 0; y < height; y += 1) {
+      const fy = Math.min(gridH - 1, Math.max(0, (y + 0.5) / tileSize - 0.5));
+      const gy0 = Math.floor(fy);
+      const gy1 = Math.min(gridH - 1, gy0 + 1);
+      const wy = fy - gy0;
+      const rOff = y * width;
+
+      for (let x = 0; x < width; x += 1) {
+        const fx = Math.min(gridW - 1, Math.max(0, (x + 0.5) / tileSize - 0.5));
+        const gx0 = Math.floor(fx);
+        const gx1 = Math.min(gridW - 1, gx0 + 1);
+        const wx = fx - gx0;
+
+        const b00 = tileBg[gy0 * gridW + gx0];
+        const b10 = tileBg[gy0 * gridW + gx1];
+        const b01 = tileBg[gy1 * gridW + gx0];
+        const b11 = tileBg[gy1 * gridW + gx1];
+        const localBg =
+          (b00 * (1 - wx) + b10 * wx) * (1 - wy) +
+          (b01 * (1 - wx) + b11 * wx) * wy;
+
+        const rel = (rawGray[rOff + x] / Math.max(55, localBg)) * 242;
+        // Kontras S-curve ringan untuk mempertegas tinta SN terhadap kertas putih
+        const stretched = rel < 165 ? rel * 0.76 : Math.min(255, 165 + (rel - 165) * 1.18);
+        normGray[rOff + x] = Math.max(0, Math.min(255, Math.round(stretched)));
+      }
+    }
+
+    suppressLongTableLinesOnGrayBuffer(normGray, width, height);
+
     for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      const normalized = Math.max(0, Math.min(255, Math.round(((grayBuf[p] - minL) * 255) / range)));
-      data[i] = normalized;
-      data[i + 1] = normalized;
-      data[i + 2] = normalized;
+      const val = normGray[p];
+      data[i] = val;
+      data[i + 1] = val;
+      data[i + 2] = val;
+      data[i + 3] = 255;
     }
     ctx.putImageData(imageData, 0, 0);
-  } catch (err) {}
-
-  return { canvas, scale };
+    return { canvas, scale, cleanGray: normGray, width, height };
+  } catch (err) {
+    return { canvas, scale, cleanGray: null, width, height };
+  }
 }
 
 function getDedicatedFileScanner() {
@@ -640,7 +894,6 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
   ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
   ctx.drawImage(img, sx, sy, sw, sh, quietPad, quietPad, sw * upScale, sh * upScale);
 
-  // 1. Pass 1: Native BarcodeDetector pada potongan asli ber-quiet zone
   const cropNative = await detectBarcodeBoxesWithNativeDetector(cropCanvas);
   const matchedNative = cropNative.find((item) => item.text && item.text.length >= 2);
   if (matchedNative) {
@@ -649,7 +902,6 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
     return;
   }
 
-  // 2. Pass 2: Native BarcodeDetector pada potongan binarisasi kontras tinggi
   const binCanvas = buildBinarizedCropCanvas(cropCanvas);
   const binNative = await detectBarcodeBoxesWithNativeDetector(binCanvas);
   const matchedBinNative = binNative.find((item) => item.text && item.text.length >= 2);
@@ -659,7 +911,6 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
     return;
   }
 
-  // 3. Pass 3: ZXing file decoder pada potongan asli & binarisasi
   const zxingRes =
     (await scanBarcodeFromCanvasWithFileDecoder(cropCanvas)) ||
     (await scanBarcodeFromCanvasWithFileDecoder(binCanvas));
@@ -713,6 +964,122 @@ function isBarcodeArtifactText(text, bbox) {
   return false;
 }
 
+function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
+  if (!cleanGray || !imgW || !imgH) return rawBbox;
+
+  const x0 = Math.max(0, Math.floor(rawBbox.x0));
+  const y0 = Math.max(0, Math.floor(rawBbox.y0));
+  const x1 = Math.min(imgW, Math.ceil(rawBbox.x1));
+  const y1 = Math.min(imgH, Math.ceil(rawBbox.y1));
+  const bw = x1 - x0;
+  const bh = y1 - y0;
+  if (bw <= 6 || bh <= 6) return rawBbox;
+
+  // Hitung kepadatan piksel tinta gelap per kolom di dalam kotak
+  const colCounts = new Uint16Array(bw);
+  const rowCounts = new Uint16Array(bh);
+  const inkThreshold = 155;
+
+  for (let y = y0; y < y1; y += 1) {
+    const rOff = y * imgW;
+    let rHits = 0;
+    for (let x = x0; x < x1; x += 1) {
+      if (cleanGray[rOff + x] < inkThreshold) {
+        colCounts[x - x0] += 1;
+        rHits += 1;
+      }
+    }
+    rowCounts[y - y0] = rHits;
+  }
+
+  // Pangkas baris atas/bawah yang kosong atau sisa garis horizontal penuh
+  let trimY0 = 0;
+  let trimY1 = bh - 1;
+  const maxLineSpan = Math.max(bw * 0.94, 40);
+  while (trimY0 < trimY1 && (rowCounts[trimY0] < 2 || rowCounts[trimY0] > maxLineSpan)) {
+    trimY0 += 1;
+  }
+  while (trimY1 > trimY0 && (rowCounts[trimY1] < 2 || rowCounts[trimY1] > maxLineSpan)) {
+    trimY1 -= 1;
+  }
+
+  const activeHeight = Math.max(6, trimY1 - trimY0 + 1);
+  // Hitung ulang proyeksi kolom hanya pada rentang tinggi huruf aktual
+  const activeColCounts = new Uint16Array(bw);
+  for (let y = y0 + trimY0; y <= y0 + trimY1; y += 1) {
+    const rOff = y * imgW;
+    for (let x = x0; x < x1; x += 1) {
+      if (cleanGray[rOff + x] < inkThreshold) {
+        activeColCounts[x - x0] += 1;
+      }
+    }
+  }
+
+  // Kelompokkan segmen tinta horizontal yang terpisah celah lebar (mencegah kotak melebar selebar tabel)
+  const segments = [];
+  let segStart = -1;
+  let emptyGap = 0;
+  const maxCharGap = Math.max(10, Math.round(activeHeight * 0.95));
+
+  for (let c = 0; c < bw; c += 1) {
+    const hasInk = activeColCounts[c] >= 2;
+    if (hasInk) {
+      if (segStart < 0) {
+        segStart = c;
+      }
+      emptyGap = 0;
+    } else if (segStart >= 0) {
+      emptyGap += 1;
+      if (emptyGap > maxCharGap) {
+        const segEnd = c - emptyGap;
+        if (segEnd - segStart >= 4) {
+          segments.push({ start: segStart, end: segEnd });
+        }
+        segStart = -1;
+        emptyGap = 0;
+      }
+    }
+  }
+  if (segStart >= 0) {
+    const segEnd = bw - 1 - emptyGap;
+    if (segEnd - segStart >= 4) {
+      segments.push({ start: segStart, end: segEnd });
+    }
+  }
+
+  if (segments.length === 0) {
+    return rawBbox;
+  }
+
+  // Pilih segmen tinta utama yang paling sesuai dengan panjang teks karakter
+  let bestSeg = segments[0];
+  if (segments.length > 1) {
+    const expectedWidth = Math.max(16, text.length * activeHeight * 0.62);
+    let bestScore = -Infinity;
+    segments.forEach((seg) => {
+      const segW = seg.end - seg.start + 1;
+      let inkMass = 0;
+      for (let c = seg.start; c <= seg.end; c += 1) {
+        inkMass += activeColCounts[c];
+      }
+      const distFromCenter = Math.abs((seg.start + seg.end) / 2 - bw / 2);
+      const sizeDiff = Math.abs(segW - expectedWidth);
+      const score = inkMass * 2 - sizeDiff * 1.4 - distFromCenter * 0.35;
+      if (score > bestScore) {
+        bestScore = score;
+        bestSeg = seg;
+      }
+    });
+  }
+
+  return {
+    x0: Math.max(0, x0 + bestSeg.start - 2),
+    y0: Math.max(0, y0 + trimY0 - 1),
+    x1: Math.min(imgW, x0 + bestSeg.end + 3),
+    y1: Math.min(imgH, y0 + trimY1 + 2)
+  };
+}
+
 function extractWordsFromTesseractData(data) {
   if (!data) return [];
 
@@ -744,7 +1111,6 @@ function extractWordsFromTesseractData(data) {
     }
   }
 
-  // Fallback parser dari TSV Tesseract v5 (level 5 = word)
   if (typeof data.tsv === "string" && data.tsv.trim()) {
     const tsvWords = [];
     const rows = data.tsv.split(/\r?\n/);
@@ -777,1282 +1143,144 @@ function extractWordsFromTesseractData(data) {
   return [];
 }
 
-async function detectWordBoxesWithTesseract(canvas, scale) {
+function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
+  const invScale = scale > 0 ? 1 / scale : 1;
+  const maxCanvasW = canvas.width * 0.88;
+  const maxCanvasH = canvas.height * 0.16;
+
+  return rawWords
+    .filter((w) => {
+      if (!w || !w.bbox) return false;
+      const rawStr = String(w.text || "").trim().replace(/^\|+|\|+$/g, "").trim();
+      if (!rawStr) return false;
+
+      const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
+      const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
+      if (boxW < 5 || boxH < 7 || boxW > maxCanvasW || boxH > maxCanvasH) {
+        return false;
+      }
+
+      const conf = typeof w.confidence === "number" ? w.confidence : 0;
+      const isCodeLike = /[0-9]/.test(rawStr) && rawStr.length >= 3;
+      const minConf = isCodeLike ? 22 : 42;
+      return conf >= minConf;
+    })
+    .map((w) => {
+      const rawStr = String(w.text).trim().replace(/^\|+|\|+$/g, "").trim();
+      const canvasBox = {
+        x0: Math.max(0, Number(w.bbox.x0) || 0),
+        y0: Math.max(0, Number(w.bbox.y0) || 0),
+        x1: Math.min(canvas.width, Number(w.bbox.x1) || 0),
+        y1: Math.min(canvas.height, Number(w.bbox.y1) || 0)
+      };
+
+      const trimmedCanvasBox = refineWordBoundingBoxWithInk(
+        canvasBox,
+        rawStr,
+        cleanGray,
+        canvas.width,
+        canvas.height
+      );
+
+      return {
+        type: "word",
+        text: rawStr,
+        confidence: typeof w.confidence === "number" ? w.confidence : 50,
+        bbox: {
+          x0: trimmedCanvasBox.x0 * invScale,
+          y0: trimmedCanvasBox.y0 * invScale,
+          x1: trimmedCanvasBox.x1 * invScale,
+          y1: trimmedCanvasBox.y1 * invScale
+        }
+      };
+    })
+    .filter((item) => item.text.length > 0 && !isBarcodeArtifactText(item.text, item.bbox));
+}
+
+function computeBoxIoU(boxA, boxB) {
+  const interX0 = Math.max(boxA.x0, boxB.x0);
+  const interY0 = Math.max(boxA.y0, boxB.y0);
+  const interX1 = Math.min(boxA.x1, boxB.x1);
+  const interY1 = Math.min(boxA.y1, boxB.y1);
+  if (interX1 <= interX0 || interY1 <= interY0) return 0;
+
+  const interArea = (interX1 - interX0) * (interY1 - interY0);
+  const areaA = Math.max(1, (boxA.x1 - boxA.x0) * (boxA.y1 - boxA.y0));
+  const areaB = Math.max(1, (boxB.x1 - boxB.x0) * (boxB.y1 - boxB.y0));
+  return interArea / Math.max(1, areaA + areaB - interArea);
+}
+
+function mergeUniqueWordDetections(primaryWords, secondaryWords) {
+  const merged = [...primaryWords];
+  secondaryWords.forEach((cand) => {
+    const candMidX = (cand.bbox.x0 + cand.bbox.x1) / 2;
+    const candMidY = (cand.bbox.y0 + cand.bbox.y1) / 2;
+
+    const duplicateIdx = merged.findIndex((existing) => {
+      if (computeBoxIoU(existing.bbox, cand.bbox) > 0.28) return true;
+      const exMidX = (existing.bbox.x0 + existing.bbox.x1) / 2;
+      const exMidY = (existing.bbox.y0 + existing.bbox.y1) / 2;
+      const sameRow = Math.abs(exMidY - candMidY) < Math.max(10, (existing.bbox.y1 - existing.bbox.y0) * 0.55);
+      const sameCol = Math.abs(exMidX - candMidX) < Math.max(18, (existing.bbox.x1 - existing.bbox.x0) * 0.45);
+      return sameRow && sameCol;
+    });
+
+    if (duplicateIdx < 0) {
+      merged.push(cand);
+    } else {
+      const existing = merged[duplicateIdx];
+      // Jika kandidat kedua menangkap SN lebih lengkap dan panjangnya wajar, perbarui
+      if (cand.text.length > existing.text.length && cand.confidence >= existing.confidence - 8) {
+        merged[duplicateIdx] = cand;
+      }
+    }
+  });
+  return merged;
+}
+
+async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
   if (typeof window.Tesseract === "undefined" || typeof window.Tesseract.recognize !== "function") {
     return [];
   }
   try {
-    // Tesseract.js v5 membutuhkan opsi output { blocks: true, tsv: true } agar koordinat kata dikembalikan
-    const result = await window.Tesseract.recognize(
+    // Pass 1: Sparse Text (PSM 11) agar setiap baris SN di tengah tabel terdeteksi tanpa terlewat
+    const sparseResult = await window.Tesseract.recognize(
       canvas,
       "eng",
-      { logger: () => {} },
+      {
+        logger: () => {},
+        tessedit_pageseg_mode: "11"
+      },
       { blocks: true, text: true, tsv: true }
     );
-    const data = result && result.data ? result.data : null;
-    if (!data) return [];
+    const sparseData = sparseResult && sparseResult.data ? sparseResult.data : null;
+    const sparseWords = parseRawTesseractWords(
+      extractWordsFromTesseractData(sparseData),
+      canvas,
+      scale,
+      cleanGray
+    );
 
-    const rawWords = extractWordsFromTesseractData(data);
-    const invScale = scale > 0 ? 1 / scale : 1;
-    const maxCanvasW = canvas.width * 0.92;
-    const maxCanvasH = canvas.height * 0.24;
+    // Pass 2: Auto/Block Layout (PSM 3) untuk melengkapi jika ada kata terstruktur yang terlewat di Pass 1
+    const blockResult = await window.Tesseract.recognize(
+      canvas,
+      "eng",
+      {
+        logger: () => {},
+        tessedit_pageseg_mode: "3"
+      },
+      { blocks: true, text: true, tsv: true }
+    );
+    const blockData = blockResult && blockResult.data ? blockResult.data : null;
+    const blockWords = parseRawTesseractWords(
+      extractWordsFromTesseractData(blockData),
+      canvas,
+      scale,
+      cleanGray
+    );
 
-    return rawWords
-      .filter((w) => {
-        if (!w || !w.bbox) return false;
-        const rawStr = String(w.text || "").trim().replace(/^\|+|\|+$/g, "").trim();
-        if (!rawStr) return false;
-
-        const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
-        const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
-        if (boxW < 5 || boxH < 7 || boxW > maxCanvasW || boxH > maxCanvasH) {
-          return false;
-        }
-
-        const conf = typeof w.confidence === "number" ? w.confidence : 0;
-        const isCodeLike = /[0-9]/.test(rawStr) && rawStr.length >= 3;
-        const minConf = isCodeLike ? 30 : 48;
-        return conf >= minConf;
-      })
-      .map((w) => {
-        const rawStr = String(w.text).trim().replace(/^\|+|\|+$/g, "").trim();
-        return {
-          type: "word",
-          text: rawStr,
-          bbox: {
-            x0: (Number(w.bbox.x0) || 0) * invScale,
-            y0: (Number(w.bbox.y0) || 0) * invScale,
-            x1: (Number(w.bbox.x1) || 0) * invScale,
-            y1: (Number(w.bbox.y1) || 0) * invScale
-          }
-        };
-      })
-      .filter((item) => item.text.length > 0 && !isBarcodeArtifactText(item.text, item.bbox));
+    return mergeUniqueWordDetections(sparseWords, blockWords);
   } catch (err) {
     return [];
   }
 }
-
-function isLabelPrefixToken(token) {
-  return /^(S\/N|P\/N|SN|PN|NO|ID|LOT|BATCH|DESC|QTY|PCS)[:：]?$/i.test(String(token || "").trim());
-}
-
-function attachFallbackValuesToBarcodes(barcodeItems, wordItems) {
-  if (!Array.isArray(barcodeItems) || barcodeItems.length === 0) return;
-
-  barcodeItems.forEach((bc) => {
-    if (bc.text) return;
-    const b = bc.bbox;
-    const bHeight = Math.max(14, b.y1 - b.y0);
-    const maxSearchY = b.y1 + bHeight * 1.85;
-
-    const candidatesBelow = wordItems
-      .filter((w) => {
-        const wMidY = (w.bbox.y0 + w.bbox.y1) / 2;
-        const wMidX = (w.bbox.x0 + w.bbox.x1) / 2;
-        const isBelow = wMidY >= b.y1 - 4 && wMidY <= maxSearchY;
-        const isAlignedX = wMidX >= b.x0 - 48 && wMidX <= b.x1 + 48;
-        const isCodeToken = /^[A-Za-z0-9\-_]{4,}$/.test(w.text) && !isLabelPrefixToken(w.text);
-        return isBelow && isAlignedX && isCodeToken;
-      })
-      .sort((a, bWord) => {
-        const distA = a.bbox.y0 - b.y1;
-        const distB = bWord.bbox.y0 - b.y1;
-        if (Math.abs(distA - distB) > 16) return distA - distB;
-        return bWord.text.length - a.text.length;
-      });
-
-    if (candidatesBelow.length > 0) {
-      bc.text = candidatesBelow[0].text;
-    }
-  });
-}
-
-function getRenderedImageMetrics() {
-  if (!photoLensStage || !ocrNaturalWidth || !ocrNaturalHeight) return null;
-  const stageRect = photoLensStage.getBoundingClientRect();
-  if (!stageRect.width || !stageRect.height) return null;
-
-  const scale = Math.min(stageRect.width / ocrNaturalWidth, stageRect.height / ocrNaturalHeight);
-  const renderedWidth = ocrNaturalWidth * scale;
-  const renderedHeight = ocrNaturalHeight * scale;
-  const offsetX = (stageRect.width - renderedWidth) / 2;
-  const offsetY = (stageRect.height - renderedHeight) / 2;
-
-  return {
-    stageWidth: stageRect.width,
-    stageHeight: stageRect.height,
-    scale,
-    offsetX,
-    offsetY
-  };
-}
-
-function updateFloatingActionBarPosition() {
-  if (!photoLensActionBar || !photoOcrLayer || !photoLensStage) return;
-
-  if (selectedOcrIndices.length === 0) {
-    photoLensActionBar.classList.remove("visible");
-    setPhotoLensStatus("Ketuk angka/barcode atau geser untuk memblok biru", false);
-    return;
-  }
-
-  const stageRect = photoLensStage.getBoundingClientRect();
-  let minLeft = Infinity;
-  let minTop = Infinity;
-  let maxRight = -Infinity;
-  let maxBottom = -Infinity;
-
-  selectedOcrIndices.forEach((idx) => {
-    const boxEl = photoOcrLayer.querySelector(`[data-index="${idx}"]`);
-    if (!boxEl) return;
-    const left = parseFloat(boxEl.style.left) || 0;
-    const top = parseFloat(boxEl.style.top) || 0;
-    const width = parseFloat(boxEl.style.width) || 0;
-    const height = parseFloat(boxEl.style.height) || 0;
-
-    minLeft = Math.min(minLeft, left);
-    minTop = Math.min(minTop, top);
-    maxRight = Math.max(maxRight, left + width);
-    maxBottom = Math.max(maxBottom, top + height);
-  });
-
-  if (!isFinite(minLeft)) {
-    photoLensActionBar.classList.remove("visible");
-    return;
-  }
-
-  photoLensActionBar.classList.add("visible");
-  setPhotoLensStatus("", true);
-
-  const barWidth = photoLensActionBar.offsetWidth || 184;
-  const barHeight = photoLensActionBar.offsetHeight || 42;
-  const halfBar = barWidth / 2;
-
-  const centerX = (minLeft + maxRight) / 2;
-  const clampedCenterX = Math.max(halfBar + 10, Math.min(stageRect.width - halfBar - 10, centerX));
-
-  let targetTop = minTop - 10;
-  if (targetTop - barHeight < 56) {
-    targetTop = Math.min(stageRect.height - 12, maxBottom + barHeight + 14);
-  }
-
-  photoLensActionBar.style.left = `${clampedCenterX}px`;
-  photoLensActionBar.style.top = `${targetTop}px`;
-}
-
-function syncOcrSelectionVisuals() {
-  if (!photoOcrLayer) return;
-  const sorted = Array.from(new Set(selectedOcrIndices)).sort((a, b) => a - b);
-  selectedOcrIndices = sorted;
-
-  const firstIdx = sorted.length > 0 ? sorted[0] : -1;
-  const lastIdx = sorted.length > 0 ? sorted[sorted.length - 1] : -1;
-
-  const boxes = photoOcrLayer.querySelectorAll(".ocr-word-box, .ocr-barcode-box");
-  boxes.forEach((box) => {
-    const idx = Number(box.getAttribute("data-index"));
-    const isSelected = sorted.includes(idx);
-    box.classList.toggle("selected", isSelected);
-    box.classList.toggle("is-first", isSelected && idx === firstIdx);
-    box.classList.toggle("is-last", isSelected && idx === lastIdx);
-  });
-
-  updateFloatingActionBarPosition();
-}
-
-function renderOcrWordBoxes() {
-  if (!photoOcrLayer) return;
-  const metrics = getRenderedImageMetrics();
-  photoOcrLayer.innerHTML = "";
-  if (!metrics || ocrWordItems.length === 0) return;
-
-  ocrWordItems.forEach((item, index) => {
-    const box = document.createElement("div");
-    box.className = item.type === "barcode" ? "ocr-barcode-box" : "ocr-word-box";
-    box.setAttribute("data-index", String(index));
-    box.setAttribute("role", "button");
-    box.setAttribute("aria-label", item.text || "Barcode");
-
-    const padX = item.type === "barcode" ? 2 : 2;
-    const padY = item.type === "barcode" ? 2 : 1.5;
-
-    const left = metrics.offsetX + item.bbox.x0 * metrics.scale - padX;
-    const top = metrics.offsetY + item.bbox.y0 * metrics.scale - padY;
-    const width = Math.max(12, (item.bbox.x1 - item.bbox.x0) * metrics.scale + padX * 2);
-    const height = Math.max(14, (item.bbox.y1 - item.bbox.y0) * metrics.scale + padY * 2);
-
-    box.style.left = `${left}px`;
-    box.style.top = `${top}px`;
-    box.style.width = `${width}px`;
-    box.style.height = `${height}px`;
-
-    photoOcrLayer.appendChild(box);
-  });
-
-  syncOcrSelectionVisuals();
-}
-
-function findWordIndexAtPoint(clientX, clientY) {
-  if (!photoOcrLayer) return -1;
-  const boxes = photoOcrLayer.querySelectorAll(".ocr-word-box, .ocr-barcode-box");
-  let closestIdx = -1;
-  let closestDist = Infinity;
-
-  boxes.forEach((box) => {
-    const rect = box.getBoundingClientRect();
-    const pad = 6;
-    if (
-      clientX >= rect.left - pad &&
-      clientX <= rect.right + pad &&
-      clientY >= rect.top - pad &&
-      clientY <= rect.bottom + pad
-    ) {
-      const cx = (rect.left + rect.right) / 2;
-      const cy = (rect.top + rect.bottom) / 2;
-      const dist = Math.hypot(clientX - cx, clientY - cy);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIdx = Number(box.getAttribute("data-index"));
-      }
-    }
-  });
-
-  return closestIdx;
-}
-
-function selectItemsInDragRect(startPt, endPt, anchorIdx) {
-  if (!photoOcrLayer || !startPt || !endPt) return;
-  const minX = Math.min(startPt.x, endPt.x) - 5;
-  const maxX = Math.max(startPt.x, endPt.x) + 5;
-  const minY = Math.min(startPt.y, endPt.y) - 5;
-  const maxY = Math.max(startPt.y, endPt.y) + 5;
-
-  const hits = new Set();
-  if (anchorIdx >= 0) {
-    hits.add(anchorIdx);
-  }
-
-  const boxes = photoOcrLayer.querySelectorAll(".ocr-word-box, .ocr-barcode-box");
-  boxes.forEach((box) => {
-    const rect = box.getBoundingClientRect();
-    const intersects =
-      rect.right >= minX &&
-      rect.left <= maxX &&
-      rect.bottom >= minY &&
-      rect.top <= maxY;
-    if (intersects) {
-      hits.add(Number(box.getAttribute("data-index")));
-    }
-  });
-
-  if (hits.size > 0) {
-    selectedOcrIndices = Array.from(hits);
-    syncOcrSelectionVisuals();
-  }
-}
-
-function setupPhotoOcrInteractions() {
-  if (!photoOcrLayer) return;
-
-  photoOcrLayer.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("#photo-lens-action-bar")) return;
-    const hitIdx = findWordIndexAtPoint(e.clientX, e.clientY);
-    if (hitIdx >= 0) {
-      isOcrDragging = true;
-      ocrDragStartIdx = hitIdx;
-      ocrDragStartPoint = { x: e.clientX, y: e.clientY };
-      ocrDragMoved = false;
-      try {
-        photoOcrLayer.setPointerCapture(e.pointerId);
-      } catch (err) {}
-    } else {
-      // Mulai drag area meskipun jari dimulai sedikit di pinggir kotak teks/barcode
-      isOcrDragging = true;
-      ocrDragStartIdx = -1;
-      ocrDragStartPoint = { x: e.clientX, y: e.clientY };
-      ocrDragMoved = false;
-      try {
-        photoOcrLayer.setPointerCapture(e.pointerId);
-      } catch (err) {}
-    }
-  });
-
-  photoOcrLayer.addEventListener("pointermove", (e) => {
-    if (!isOcrDragging || !ocrDragStartPoint) return;
-    const dist = Math.hypot(e.clientX - ocrDragStartPoint.x, e.clientY - ocrDragStartPoint.y);
-    if (dist > 8) {
-      ocrDragMoved = true;
-      selectItemsInDragRect(ocrDragStartPoint, { x: e.clientX, y: e.clientY }, ocrDragStartIdx);
-    }
-  });
-
-  const finishPointerSelection = (e) => {
-    if (!isOcrDragging) return;
-    const startIdx = ocrDragStartIdx;
-    const wasDragged = ocrDragMoved;
-    isOcrDragging = false;
-    ocrDragStartIdx = -1;
-    ocrDragStartPoint = null;
-    ocrDragMoved = false;
-
-    try {
-      if (e && typeof e.pointerId === "number") {
-        photoOcrLayer.releasePointerCapture(e.pointerId);
-      }
-    } catch (err) {}
-
-    if (!wasDragged) {
-      if (startIdx >= 0) {
-        const existingPos = selectedOcrIndices.indexOf(startIdx);
-        if (existingPos >= 0) {
-          selectedOcrIndices.splice(existingPos, 1);
-        } else {
-          selectedOcrIndices.push(startIdx);
-        }
-        syncOcrSelectionVisuals();
-      } else if (selectedOcrIndices.length > 0) {
-        selectedOcrIndices = [];
-        syncOcrSelectionVisuals();
-      }
-    }
-  };
-
-  photoOcrLayer.addEventListener("pointerup", finishPointerSelection);
-  photoOcrLayer.addEventListener("pointercancel", finishPointerSelection);
-}
-
-setupPhotoOcrInteractions();
-
-window.addEventListener("resize", () => {
-  if (photoLensOverlay && photoLensOverlay.classList.contains("open") && ocrWordItems.length > 0) {
-    renderOcrWordBoxes();
-  }
-});
-
-function cleanSelectedWordTokens(rawWords) {
-  const cleaned = rawWords
-    .map((w) => String(w || "").trim().replace(/^[:：]+|[:：]+$/g, "").trim())
-    .filter(Boolean);
-
-  if (cleaned.length <= 1) {
-    return cleaned;
-  }
-
-  const withoutLabels = cleaned.filter((token) => !isLabelPrefixToken(token));
-  return withoutLabels.length > 0 ? withoutLabels : cleaned;
-}
-
-function getSelectedPhotoSelection() {
-  if (selectedOcrIndices.length === 0) {
-    return { text: "", format: "", hasSelection: false };
-  }
-
-  const selectedItems = selectedOcrIndices
-    .map((idx) => ocrWordItems[idx])
-    .filter(Boolean);
-
-  if (selectedItems.length === 0) {
-    return { text: "", format: "", hasSelection: false };
-  }
-
-  const selectedBarcodes = selectedItems.filter((item) => item.type === "barcode");
-  const selectedWords = selectedItems.filter((item) => item.type === "word");
-  const cleanedWordTokens = cleanSelectedWordTokens(selectedWords.map((w) => w.text));
-
-  if (selectedBarcodes.length > 0) {
-    const decodedBarcodeTexts = Array.from(
-      new Set(selectedBarcodes.map((bc) => String(bc.text || "").trim()).filter(Boolean))
-    );
-    const primaryFormat = selectedBarcodes[0].format || "CODE_39";
-
-    if (decodedBarcodeTexts.length > 0) {
-      // Jika pengguna memblok barcode sekaligus angka di bawahnya, hindari duplikasi nilai yang sama
-      const extraDistinctWords = cleanedWordTokens.filter(
-        (token) => !decodedBarcodeTexts.includes(token)
-      );
-      const combined =
-        extraDistinctWords.length > 0
-          ? `${decodedBarcodeTexts.join(" ")} ${extraDistinctWords.join(" ")}`.trim()
-          : decodedBarcodeTexts.join(" ");
-
-      return {
-        text: combined,
-        format: primaryFormat,
-        hasSelection: true
-      };
-    }
-
-    if (cleanedWordTokens.length > 0) {
-      const codeTokens = cleanedWordTokens.filter((token) => /^[A-Za-z0-9\-_]{4,}$/.test(token));
-      const finalTokens = codeTokens.length > 0 ? codeTokens : cleanedWordTokens;
-      return {
-        text: finalTokens.join(" ").trim(),
-        format: primaryFormat,
-        hasSelection: true
-      };
-    }
-
-    return { text: "", format: primaryFormat, hasSelection: true };
-  }
-
-  const joinedText = cleanedWordTokens.join(" ").trim();
-  return {
-    text: joinedText,
-    format: joinedText ? detectScanFormatType(joinedText, "OCR Text") : "",
-    hasSelection: true
-  };
-}
-
-function getSelectedPhotoText() {
-  return getSelectedPhotoSelection().text;
-}
-
-async function applyDetectedPhotoText(imageUrl) {
-  const token = ++ocrRunToken;
-  clearPhotoLensState();
-  setPhotoLensStatus("Mendeteksi angka, huruf & barcode...", false);
-
-  try {
-    const img = await loadImageElement(imageUrl);
-    if (token !== ocrRunToken) return;
-
-    ocrNaturalWidth = img.naturalWidth || img.width;
-    ocrNaturalHeight = img.naturalHeight || img.height;
-
-    const { canvas: enhancedCanvas, scale } = buildEnhancedCanvasForOcr(img);
-
-    const [nativeBarcodes, tesseractWords] = await Promise.all([
-      detectBarcodeBoxesWithNativeDetector(img),
-      detectWordBoxesWithTesseract(enhancedCanvas, scale)
-    ]);
-    if (token !== ocrRunToken) return;
-
-    const stripeBarcodes = detectStripeBarcodeRegions(enhancedCanvas, scale);
-    const barcodeItems = mergeDetectedBarcodes(nativeBarcodes, stripeBarcodes);
-
-    await Promise.all(
-      barcodeItems.map((bc) => decodeSingleBarcodeRegionFromImage(img, bc))
-    );
-    if (token !== ocrRunToken) return;
-
-    const cleanWords = tesseractWords.filter(
-      (wordItem) => !isBoxOverlappingBarcode(wordItem.bbox, barcodeItems)
-    );
-
-    attachFallbackValuesToBarcodes(barcodeItems, cleanWords);
-
-    const combinedItems = [...barcodeItems, ...cleanWords];
-
-    combinedItems.sort((a, b) => {
-      const midAY = (a.bbox.y0 + a.bbox.y1) / 2;
-      const midBY = (b.bbox.y0 + b.bbox.y1) / 2;
-      const lineThreshold = Math.max(
-        14,
-        ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.32
-      );
-      if (Math.abs(midAY - midBY) > lineThreshold) {
-        return midAY - midBY;
-      }
-      return a.bbox.x0 - b.bbox.x0;
-    });
-
-    ocrWordItems = combinedItems;
-    renderOcrWordBoxes();
-
-    if (ocrWordItems.length > 0) {
-      setPhotoLensStatus("Ketuk angka/barcode atau geser untuk memblok biru", false);
-    } else {
-      setPhotoLensStatus("Angka/huruf tidak terbaca, ketuk Foto Ulang", false);
-    }
-  } catch (err) {
-    if (token !== ocrRunToken) return;
-    setPhotoLensStatus("Gagal memproses foto, ketuk Foto Ulang", false);
-  }
-}
-
-function retakePhotoOnly() {
-  openPhotoLensPanel();
-  if (photoCaptureInput) {
-    photoCaptureInput.value = "";
-    photoCaptureInput.click();
-  }
-}
-
-function triggerPhotoCapture() {
-  clearPhotoLensState();
-  const snapDataUrl = captureSnapshotFromVideo();
-  openPhotoLensPanel();
-
-  if (snapDataUrl && capturedPhotoPreview) {
-    capturedPhotoPreview.src = snapDataUrl;
-    capturedPhotoPreview.classList.add("has-image");
-    applyDetectedPhotoText(snapDataUrl);
-  } else if (photoCaptureInput) {
-    setPhotoLensStatus("Ambil foto angka atau huruf...", false);
-    photoCaptureInput.value = "";
-    photoCaptureInput.click();
-  }
-}
-
-function writeTextToClipboardSafe(text) {
-  if (!text) return;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    return;
-  }
-  try {
-    const tempArea = document.createElement("textarea");
-    tempArea.value = text;
-    tempArea.style.position = "fixed";
-    tempArea.style.opacity = "0";
-    document.body.appendChild(tempArea);
-    tempArea.select();
-    document.execCommand("copy");
-    document.body.removeChild(tempArea);
-  } catch (err) {}
-}
-
-function copyPhotoText() {
-  const { text: targetVal, hasSelection } = getSelectedPhotoSelection();
-  if (!targetVal) {
-    setPhotoLensStatus(
-      hasSelection
-        ? "Kode batang tidak terbaca, blok angka di bawahnya atau Foto Ulang"
-        : "Ketuk angka/barcode untuk memblok biru terlebih dahulu",
-      false
-    );
-    return;
-  }
-  writeTextToClipboardSafe(targetVal);
-  resetScan();
-  statusBadge.textContent = "Teks Tersalin!";
-}
-
-function createBarcodeFromPhotoText() {
-  const { text: targetVal, format: detectedFormat, hasSelection } = getSelectedPhotoSelection();
-  if (!targetVal) {
-    setPhotoLensStatus(
-      hasSelection
-        ? "Kode batang tidak terbaca, blok angka di bawahnya atau Foto Ulang"
-        : "Ketuk angka/barcode untuk memblok biru terlebih dahulu",
-      false
-    );
-    return;
-  }
-  writeTextToClipboardSafe(targetVal);
-  closePhotoLensPanel();
-  isScanLocked = false;
-  lastScanned = "";
-  resetCandidateScan();
-  generateQR(targetVal, detectedFormat || detectScanFormatType(targetVal, "OCR Text"));
-  completeScan();
-}
-
-if (photoCaptureInput) {
-  photoCaptureInput.addEventListener("change", (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const resultUrl = ev.target && ev.target.result ? String(ev.target.result) : "";
-      if (resultUrl && capturedPhotoPreview) {
-        capturedPhotoPreview.src = resultUrl;
-        capturedPhotoPreview.classList.add("has-image");
-        applyDetectedPhotoText(resultUrl);
-      }
-      openPhotoLensPanel();
-    };
-    reader.readAsDataURL(file);
-  });
-}
-function toggleAutoZoom() {
-  isAutoZoomEnabled = !isAutoZoomEnabled;
-  if (autoZoomBtn) {
-    autoZoomBtn.classList.toggle("active", isAutoZoomEnabled);
-  }
-  updateAutoZoomBadge();
-}
-
-function updateAutoZoomBadge() {
-  if (!autoZoomBadge) return;
-  autoZoomBadge.textContent = isAutoZoomEnabled
-    ? `Auto Zoom: ${currentZoom.toFixed(1)}x`
-    : `Manual Zoom: ${currentZoom.toFixed(1)}x`;
-}
-
-async function applyCameraZoomValue(val) {
-  const clamped = Math.max(minZoomSupported, Math.min(maxZoomSupported, Number(val)));
-  currentZoom = clamped;
-
-  if (zoomSlider) {
-    zoomSlider.value = clamped;
-  }
-  if (zoomValue) {
-    zoomValue.textContent = `${clamped.toFixed(1)}x`;
-  }
-  updateAutoZoomBadge();
-
-  if (!isCameraRunning || !isZoomSupported) return;
-  try {
-    const advancedConstraint = { zoom: clamped };
-    if (isFocusSupported) {
-      advancedConstraint.focusMode = "continuous";
-    }
-    await html5QrCode.applyVideoConstraints({
-      advanced: [advancedConstraint]
-    });
-  } catch (err) {}
-}
-
-function startAutoZoomCycle() {
-  if (autoZoomTimer) {
-    clearInterval(autoZoomTimer);
-  }
-  autoZoomTimer = setInterval(() => {
-    if (!isAutoZoomEnabled || !isCameraRunning || isScanLocked || document.visibilityState !== "visible") {
-      return;
-    }
-    const targetMax = Math.min(maxZoomSupported, Math.max(minZoomSupported + 0.4, 2.0));
-    const step = 0.2;
-    let nextZoom = currentZoom + step * autoZoomDirection;
-
-    if (nextZoom >= targetMax) {
-      nextZoom = targetMax;
-      autoZoomDirection = -1;
-    } else if (nextZoom <= minZoomSupported) {
-      nextZoom = minZoomSupported;
-      autoZoomDirection = 1;
-    }
-
-    applyCameraZoomValue(Number(nextZoom.toFixed(1)));
-  }, 3600);
-}
-
-// Kontrol Bottom Sheet Hasil Scan & Full Screen QR
-function openScanSheet(cleanText, formatName) {
-  scannedItemsCount += 1;
-  if (sheetScannedCount) {
-    sheetScannedCount.textContent = "Scanned";
-  }
-  if (sheetBarcodeValue) {
-    sheetBarcodeValue.textContent = cleanText;
-  }
-  if (sheetFormatValue) {
-    sheetFormatValue.textContent = formatName;
-  }
-  if (scanResultSheet) {
-    scanResultSheet.style.transform = "";
-    scanResultSheet.classList.add("open");
-  }
-  if (sheetBackdrop) {
-    sheetBackdrop.classList.add("open");
-  }
-}
-
-function closeScanSheetOnly() {
-  if (scanResultSheet) {
-    scanResultSheet.style.transform = "";
-    scanResultSheet.classList.remove("open", "dragging");
-  }
-  if (sheetBackdrop) {
-    sheetBackdrop.classList.remove("open");
-  }
-}
-
-function dismissScanSheet() {
-  closeScanSheetOnly();
-  isScanLocked = false;
-  lastScanned = "";
-  resetCandidateScan();
-  statusBadge.textContent = "Scan Dibatalkan";
-  statusBadge.classList.remove("ready");
-  resumeCameraForNextScan();
-}
-
-function completeScan() {
-  if (!lastScanned) return;
-  closeScanSheetOnly();
-  if (fullscreenQrModal) {
-    fullscreenQrModal.classList.add("open");
-    fullscreenQrModal.setAttribute("aria-hidden", "false");
-  }
-}
-
-function closeFullscreenQrModal() {
-  if (fullscreenQrModal) {
-    fullscreenQrModal.classList.remove("open");
-    fullscreenQrModal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function setupSheetSwipeDismiss() {
-  if (!scanResultSheet) return;
-  const swipeTarget = sheetDragHandle || scanResultSheet;
-
-  swipeTarget.addEventListener(
-    "touchstart",
-    (e) => {
-      if (!scanResultSheet.classList.contains("open") || !e.touches || e.touches.length === 0) return;
-      isSheetDragging = true;
-      sheetStartY = e.touches[0].clientY;
-      sheetCurrentDeltaY = 0;
-      scanResultSheet.classList.add("dragging");
-    },
-    { passive: true }
-  );
-
-  swipeTarget.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!isSheetDragging || !e.touches || e.touches.length === 0) return;
-      const deltaY = e.touches[0].clientY - sheetStartY;
-      if (deltaY > 0) {
-        sheetCurrentDeltaY = deltaY;
-        scanResultSheet.style.transform = `translateY(${deltaY}px)`;
-      }
-    },
-    { passive: true }
-  );
-
-  const finishSwipe = () => {
-    if (!isSheetDragging) return;
-    isSheetDragging = false;
-    scanResultSheet.classList.remove("dragging");
-    if (sheetCurrentDeltaY > 75) {
-      dismissScanSheet();
-    } else {
-      scanResultSheet.style.transform = "";
-    }
-    sheetCurrentDeltaY = 0;
-  };
-
-  swipeTarget.addEventListener("touchend", finishSwipe);
-  swipeTarget.addEventListener("touchcancel", finishSwipe);
-}
-
-setupSheetSwipeDismiss();
-
-function detectScanFormatType(value, fallbackLabel = "") {
-  const trimmed = value.trim();
-  if (/^\d{8}$/.test(trimmed)) return "EAN_8";
-  if (/^\d{12}$/.test(trimmed)) return "UPC_A";
-  if (/^\d{13}$/.test(trimmed)) return "EAN_13";
-  if (/^https?:\/\//i.test(trimmed)) return "QR_CODE";
-  if (/^[A-Za-z0-9\-_]{6,}$/.test(trimmed)) return "CODE_128";
-  return fallbackLabel || `Scan ${currentScanMode.toUpperCase()}`;
-}
-
-function generateQR(text, formatName = "Scan") {
-  const cleanText = text.trim();
-  if (!cleanText || isScanLocked || cleanText === lastScanned) return;
-
-  isScanLocked = true;
-  lastScanned = cleanText;
-  resetCandidateScan();
-  pauseCameraForSingleScan();
-  triggerScanFeedback();
-
-  decodedTextEl.textContent = cleanText;
-  formatInfoEl.textContent = `Format terbaca: ${formatName}`;
-  statusBadge.textContent = "Tersedia Disalin";
-  statusBadge.classList.add("ready");
-
-  qrWrapper.innerHTML = "";
-  new QRCode(qrWrapper, {
-    text: cleanText,
-    width: 260,
-    height: 260,
-    colorDark: "#000000",
-    colorLight: "#ffffff",
-    correctLevel: QRCode.CorrectLevel.M
-  });
-
-  openScanSheet(cleanText, formatName);
-}
-
-function handleManualSubmit() {
-  if (scannerInput.value.trim() !== "") {
-    isScanLocked = false;
-    lastScanned = "";
-    resetCandidateScan();
-    const rawVal = scannerInput.value.trim();
-    generateQR(rawVal, detectScanFormatType(rawVal));
-    scannerInput.value = "";
-    scannerInput.focus();
-  }
-}
-
-scannerInput.addEventListener("keydown", function (e) {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    handleManualSubmit();
-  }
-});
-
-// Deteksi otomatis input cepat dari scanner fisik (barcode scanner keyboard wedge)
-let physicalScannerBuffer = "";
-let physicalScannerTimer = null;
-
-document.addEventListener("keydown", (e) => {
-  const activeTag = document.activeElement ? document.activeElement.tagName : "";
-  if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-  if (e.key === "Enter") {
-    if (physicalScannerBuffer.length >= 3) {
-      const code = physicalScannerBuffer;
-      physicalScannerBuffer = "";
-      isScanLocked = false;
-      lastScanned = "";
-      resetCandidateScan();
-      generateQR(code, detectScanFormatType(code));
-    }
-    physicalScannerBuffer = "";
-    return;
-  }
-
-  if (e.key.length === 1) {
-    physicalScannerBuffer += e.key;
-    clearTimeout(physicalScannerTimer);
-    physicalScannerTimer = setTimeout(() => {
-      physicalScannerBuffer = "";
-    }, 120);
-  }
-});
-
-function copyText() {
-  if (!lastScanned) return;
-  navigator.clipboard.writeText(lastScanned);
-  statusBadge.textContent = "Teks Tersalin!";
-  setTimeout(() => {
-    statusBadge.textContent = isScanLocked ? "Tersedia Disalin" : "QR Code Siap Scan";
-  }, 1500);
-}
-
-function downloadQR() {
-  const img = qrWrapper.querySelector("img");
-  const canvas = qrWrapper.querySelector("canvas");
-  const dataUrl = img ? img.src : canvas ? canvas.toDataURL("image/png") : null;
-  if (!dataUrl) return;
-
-  const link = document.createElement("a");
-  link.href = dataUrl;
-  link.download = `QR_${lastScanned}.png`;
-  link.click();
-}
-
-function resetScan() {
-  closeFullscreenQrModal();
-  closeScanSheetOnly();
-  ocrRunToken += 1;
-  clearPhotoLensState();
-  if (photoLensOverlay) {
-    photoLensOverlay.classList.remove("open");
-  }
-  if (photoShutterBtn) {
-    photoShutterBtn.classList.remove("active");
-  }
-  isScanLocked = false;
-  lastScanned = "";
-  resetCandidateScan();
-  decodedTextEl.textContent = "-";
-  formatInfoEl.textContent = "Format: -";
-  statusBadge.textContent = "Menunggu Scan...";
-  statusBadge.classList.remove("ready");
-  qrWrapper.innerHTML =
-    '<span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>';
-  scannerInput.value = "";
-  resumeCameraForNextScan();
-}
-
-// 5. Inisialisasi Kamera Scanner Dual-Engine (ZXing 1D/2D + Native BarcodeDetector Resolusi Penuh)
-function getSupportedFormats() {
-  const f = typeof Html5QrcodeSupportedFormats !== "undefined" ? Html5QrcodeSupportedFormats : {};
-  const list = [
-    f.QR_CODE,
-    f.AZTEC,
-    f.CODABAR,
-    f.CODE_39,
-    f.CODE_93,
-    f.CODE_128,
-    f.DATA_MATRIX,
-    f.MAXICODE,
-    f.ITF,
-    f.EAN_13,
-    f.EAN_8,
-    f.PDF_417,
-    f.RSS_14,
-    f.RSS_EXPANDED,
-    f.UPC_A,
-    f.UPC_E,
-    f.UPC_EAN_EXTENSION
-  ];
-  return list.filter((item) => item !== undefined);
-}
-
-const html5QrCode = new Html5Qrcode("reader", {
-  formatsToSupport: getSupportedFormats(),
-  experimentalFeatures: {
-    useBarCodeDetectorIfSupported: false
-  },
-  verbose: false
-});
-
-function calculateDynamicQrBox(viewfinderWidth, viewfinderHeight) {
-  if (currentScanMode === "square") {
-    const size = Math.floor(Math.max(180, Math.min(viewfinderWidth - 36, viewfinderHeight - 120, 248)));
-    return { width: size, height: size };
-  }
-
-  if (currentScanMode === "bar") {
-    const width = Math.floor(Math.max(220, Math.min(viewfinderWidth - 36, 404)));
-    const height = Math.floor(Math.max(96, Math.min(104, viewfinderHeight * 0.22)));
-    return { width, height };
-  }
-
-  return {
-    width: Math.floor(Math.max(220, viewfinderWidth * 0.92)),
-    height: Math.floor(Math.max(220, Math.min(viewfinderHeight * 0.68, viewfinderWidth * 1.15)))
-  };
-}
-
-const config = {
-  fps: 24,
-  disableFlip: false,
-  qrbox: calculateDynamicQrBox
-};
-
-async function applyFocusConstraint(mode = "continuous") {
-  if (!isCameraRunning) return false;
-  try {
-    await html5QrCode.applyVideoConstraints({
-      advanced: [{ focusMode: mode }]
-    });
-    return true;
-  } catch (err) {
-    return false;
-  }
-}
-
-async function triggerAutoFocus(showIndicator = true) {
-  if (!isCameraRunning || isScanLocked) return;
-
-  if (showIndicator && scannerViewport) {
-    scannerViewport.classList.add("refocusing");
-    setTimeout(() => {
-      scannerViewport.classList.remove("refocusing");
-    }, 260);
-  }
-
-  try {
-    const capabilities = html5QrCode.getRunningTrackCapabilities();
-    const supportedModes = Array.isArray(capabilities?.focusMode) ? capabilities.focusMode : [];
-
-    if (supportedModes.includes("single-shot")) {
-      await applyFocusConstraint("single-shot");
-      if (supportedModes.includes("continuous")) {
-        setTimeout(() => {
-          applyFocusConstraint("continuous").catch(() => {});
-        }, 220);
-      }
-      return;
-    }
-
-    if (supportedModes.includes("continuous")) {
-      await applyFocusConstraint("continuous");
-      return;
-    }
-
-    await applyFocusConstraint("continuous");
-  } catch (err) {}
-}
-
-function startAutoFocusLoop() {
-  if (autoFocusTimer) {
-    clearInterval(autoFocusTimer);
-  }
-  autoFocusTimer = setInterval(() => {
-    if (isCameraRunning && !isScanLocked && document.visibilityState === "visible") {
-      triggerAutoFocus(false);
-    }
-  }, 4500);
-}
-
-if (scannerViewport) {
-  scannerViewport.addEventListener("click", (e) => {
-    if (
-      e.target.closest(".scan-top-overlay") ||
-      e.target.closest(".scan-bottom-controls") ||
-      e.target.closest("#scan-guide") ||
-      e.target.closest("#photo-lens-overlay")
-    ) {
-      return;
-    }
-    triggerAutoFocus(true);
-  });
-}
-
-async function upgradeCameraResolutionIfSupported() {
-  if (!isCameraRunning) return;
-  try {
-    await html5QrCode.applyVideoConstraints({
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    });
-  } catch (err) {}
-}
-
-function setupCameraCapabilities() {
-  upgradeCameraResolutionIfSupported();
-
-  try {
-    const capabilities = html5QrCode.getRunningTrackCapabilities();
-
-    // Cek Auto Fokus
-    if (capabilities && Array.isArray(capabilities.focusMode) && capabilities.focusMode.length > 0) {
-      isFocusSupported = true;
-      triggerAutoFocus(false);
-      startAutoFocusLoop();
-    } else {
-      isFocusSupported = false;
-      triggerAutoFocus(false);
-      startAutoFocusLoop();
-    }
-
-    // Cek Flash / Torch
-    if (capabilities && capabilities.torch) {
-      isFlashSupported = true;
-      flashBtn.disabled = false;
-      flashStatus.textContent = isFocusSupported
-        ? "Auto fokus aktif • Flash tersedia — ketuk ikon lampu untuk menyalakan."
-        : "Flash tersedia — ketuk ikon lampu untuk menyalakan.";
-    } else {
-      isFlashSupported = false;
-      flashBtn.disabled = true;
-      flashStatus.textContent = isFocusSupported
-        ? "Auto fokus aktif • Flash tidak didukung di perangkat ini."
-        : "Flash tidak didukung di kamera/browser ini.";
-    }
-
-    // Cek Zoom Kamera & siapkan kontrol Auto Zoom In / Out
-    if (capabilities && capabilities.zoom) {
-      isZoomSupported = true;
-      minZoomSupported = capabilities.zoom.min || 1;
-      maxZoomSupported = Math.min(capabilities.zoom.max || 4, 5);
-      const stepZoom = capabilities.zoom.step || 0.1;
-
-      zoomSlider.min = minZoomSupported;
-      zoomSlider.max = maxZoomSupported;
-      zoomSlider.step = stepZoom;
-      zoomSlider.value = minZoomSupported;
-      currentZoom = Number(minZoomSupported);
-      zoomValue.textContent = `${currentZoom.toFixed(1)}x`;
-      if (autoZoomBtn) {
-        autoZoomBtn.classList.toggle("active", isAutoZoomEnabled);
-      }
-      updateAutoZoomBadge();
-
-      if (!isZoomSliderBound) {
-        isZoomSliderBound = true;
-        zoomSlider.addEventListener("input", async (e) => {
-          isAutoZoomEnabled = false;
-          if (autoZoomBtn) {
-            autoZoomBtn.classList.remove("active");
-          }
-          await applyCameraZoomValue(parseFloat(e.target.value));
-        });
-      }
-
-      startAutoZoomCycle();
-    } else {
-      isZoomSupported = false;
-      updateAutoZoomBadge();
-    }
-  } catch (err) {
-    isFlashSupported = false;
-    flashBtn.disabled = true;
-    flashStatus.textContent = "Status flash tidak dapat dideteksi.";
-  }
-}
-
-async function toggleFlash() {
-  if (!isCameraRunning || !isFlashSupported) return;
-
-  const nextState = !isFlashOn;
-  try {
-    const advancedConstraint = { torch: nextState };
-    if (isFocusSupported) {
-      advancedConstraint.focusMode = "continuous";
-    }
-    await html5QrCode.applyVideoConstraints({
-      advanced: [advancedConstraint]
-    });
-    isFlashOn = nextState;
-    flashBtn.classList.toggle("active", isFlashOn);
-    flashStatus.textContent = isFlashOn
-      ? "Cahaya flash aktif untuk menerangi barcode."
-      : "Cahaya flash dimatikan.";
-    triggerAutoFocus(false);
-  } catch (err) {
-    flashStatus.textContent = "Gagal mengubah status flash di perangkat ini.";
-  }
-}
-
-function getRequiredConfirmHits(fmt, cleanText) {
-  if (cleanText.length <= 3) {
-    return 2;
-  }
-  return 1;
-}
-
-function onScanSuccess(decodedText, decodedResult) {
-  if (isScanLocked) return;
-  const cleanText = String(decodedText || "").trim();
-  if (cleanText.length < 3) return;
-
-  const fmt = decodedResult?.result?.format?.formatName || "Terdeteksi";
-  const now = Date.now();
-
-  for (const [key, entry] of scanCandidateHistory.entries()) {
-    if (now > entry.expiresAt) {
-      scanCandidateHistory.delete(key);
-    }
-  }
-
-  const candidateKey = `${fmt}::${cleanText}`;
-  const existing = scanCandidateHistory.get(candidateKey);
-  const nextHits = existing ? existing.hits + 1 : 1;
-  scanCandidateHistory.set(candidateKey, {
-    hits: nextHits,
-    expiresAt: now + 1400
-  });
-
-  const requiredHits = getRequiredConfirmHits(fmt, cleanText);
-  if (nextHits >= requiredHits) {
-    generateQR(cleanText, fmt);
-  }
-}
-
-function buildLiveCropCanvasFromVideo() {
-  const videoEl = document.querySelector("#reader video");
-  if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
-    return null;
-  }
-
-  const vw = videoEl.videoWidth;
-  const vh = videoEl.videoHeight;
-  const vpRect = scannerViewport ? scannerViewport.getBoundingClientRect() : null;
-  const cw = vpRect && vpRect.width ? vpRect.width : vw;
-  const ch = vpRect && vpRect.height ? vpRect.height : vh;
-
-  const coverScale = Math.max(cw / vw, ch / vh);
-  const visibleW = Math.min(vw, cw / coverScale);
-  const visibleH = Math.min(vh, ch / coverScale);
-
-  let cropW = visibleW;
-  let cropH = visibleH;
-
-  if (currentScanMode === "square") {
-    const guidePx = 248;
-    cropW = Math.min(vw, (guidePx / coverScale) * 1.08);
-    cropH = Math.min(vh, (guidePx / coverScale) * 1.08);
-  } else if (currentScanMode === "bar") {
-    const guideW = Math.max(220, cw - 36);
-    const guideH = 104;
-    cropW = Math.min(vw, (guideW / coverScale) * 1.08);
-    cropH = Math.min(vh, (guideH / coverScale) * 1.15);
-  }
-
-  const sx = Math.max(0, Math.floor((vw - cropW) / 2));
-  const sy = Math.max(0, Math.floor((vh - cropH) / 2));
-  const sw = Math.max(16, Math.min(vw - sx, Math.ceil(cropW)));
-  const sh = Math.max(16, Math.min(vh - sy, Math.ceil(cropH)));
-
-  const quietPad = 24;
-  const canvas = document.createElement("canvas");
-  canvas.width = sw + quietPad * 2;
-  canvas.height = sh + quietPad * 2;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(videoEl, sx, sy, sw, sh, quietPad, quietPad, sw, sh);
-  return canvas;
-}
-
-async function runNativeLiveFrameScan() {
-  if (
-    isNativeLiveScanBusy ||
-    !isCameraRunning ||
-    isScanLocked ||
-    document.visibilityState !== "visible" ||
-    (photoLensOverlay && photoLensOverlay.classList.contains("open"))
-  ) {
-    return;
-  }
-
-  isNativeLiveScanBusy = true;
-  try {
-    const cropCanvas = buildLiveCropCanvasFromVideo();
-    if (!cropCanvas) return;
-
-    const detected = await detectBarcodeBoxesWithNativeDetector(cropCanvas);
-    if (!detected || detected.length === 0 || isScanLocked) return;
-
-    const validItems = detected.filter((item) => item.text && item.text.length >= 3);
-    if (validItems.length === 0) return;
-
-    // Pilih barcode yang posisinya paling dekat dengan titik tengah area bidik
-    const midX = cropCanvas.width / 2;
-    const midY = cropCanvas.height / 2;
-    validItems.sort((a, b) => {
-      const distA = Math.hypot((a.bbox.x0 + a.bbox.x1) / 2 - midX, (a.bbox.y0 + a.bbox.y1) / 2 - midY);
-      const distB = Math.hypot((b.bbox.x0 + b.bbox.x1) / 2 - midX, (b.bbox.y0 + b.bbox.y1) / 2 - midY);
-      return distA - distB;
-    });
-
-    const best = validItems[0];
-    onScanSuccess(best.text, {
-      result: {
-        format: {
-          formatName: best.format || detectScanFormatType(best.text, "Terdeteksi")
-        }
-      }
-    });
-  } catch (err) {
-  } finally {
-    isNativeLiveScanBusy = false;
-  }
-}
-
-function startNativeLiveScanner() {
-  if (typeof window.BarcodeDetector === "undefined") return;
-  if (nativeLiveScanTimer) {
-    clearInterval(nativeLiveScanTimer);
-  }
-  nativeLiveScanTimer = setInterval(runNativeLiveFrameScan, 160);
-}
-
-html5QrCode
-  .start(
-    { facingMode: "environment" },
-    config,
-    onScanSuccess,
-    () => {}
-  )
-  .then(() => {
-    isCameraRunning = true;
-    startNativeLiveScanner();
-    setTimeout(setupCameraCapabilities, 350);
-  })
-  .catch(() => {
-    isCameraRunning = false;
-    flashBtn.disabled = true;
-    flashStatus.textContent = "Kamera tidak aktif.";
-    document.getElementById("reader").innerHTML =
-      `<div style="color:#fff; padding:24px; text-align:center; font-size:0.9rem;">
-        Kamera tidak aktif atau membutuhkan akses HTTPS.<br/>Gunakan ikon keyboard di bawah untuk mengetik / scanner fisik.
-      </div>`;
-  });
