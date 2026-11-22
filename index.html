@@ -168,6 +168,9 @@
       <div id="scanner-viewport" class="scanner-viewport mode-full" title="Ketuk layar kamera untuk fokus ulang">
         <div id="reader"></div>
 
+        <!-- Canvas Auto-Detect Tepi Dokumen Ala CamScanner -->
+        <canvas id="doc-detect-canvas" class="doc-detect-canvas" aria-hidden="true"></canvas>
+
         <!-- Bar Atas: 3 Mode Scan (Full, Square, Bar) -->
         <div id="scan-top-overlay" class="scan-top-overlay">
           <div class="scan-mode-tabs" role="tablist" aria-label="Mode Area Scan">
@@ -200,7 +203,7 @@
             <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
             <div id="photo-ocr-layer" class="photo-ocr-layer"></div>
 
-            <!-- Menu Kapsul Mengambang di Atas Blok Biru Terpilih -->
+            <!-- Menu Kapsul Mengambang di Samping Blok Biru Terpilih -->
             <div id="photo-lens-action-bar" class="photo-lens-action-bar" role="toolbar" aria-label="Aksi teks terpilih">
               <button type="button" class="lens-action-btn" onclick="copyPhotoText()">Salin</button>
               <span class="lens-action-divider" aria-hidden="true"></span>

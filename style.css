@@ -761,6 +761,21 @@ header {
   min-height: 330px;
 }
 
+/* Canvas Auto-Detect Tepi Dokumen Ala CamScanner */
+.doc-detect-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+  display: none;
+}
+
+.doc-detect-canvas.active {
+  display: block;
+}
+
 /* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
 #reader img[alt="Info icon"],
 #reader__dashboard_section,
@@ -1120,7 +1135,7 @@ header {
   pointer-events: none;
 }
 
-/* Menu Kapsul Mengambang di Atas Blok Biru (Salin | Buat Barkode / Buat QR) */
+/* Menu Kapsul Mengambang di Samping Blok Biru (Salin | Buat Barkode / Salin ke Excel) */
 .photo-lens-action-bar {
   position: absolute;
   z-index: 20;
@@ -1132,7 +1147,6 @@ header {
   padding: 4px 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.48);
   white-space: nowrap;
-  transform: translate(-50%, -100%);
 }
 
 .photo-lens-action-bar.visible {
@@ -1143,9 +1157,9 @@ header {
   background: transparent;
   color: #e8eaed;
   border: none;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 999px;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   font-weight: 500;
 }
 

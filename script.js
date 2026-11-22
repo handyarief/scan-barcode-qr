@@ -10,6 +10,7 @@ const zoomBox = document.getElementById("zoom-box");
 const zoomSlider = document.getElementById("zoom-slider");
 const zoomValue = document.getElementById("zoom-value");
 const scannerViewport = document.getElementById("scanner-viewport");
+const docDetectCanvas = document.getElementById("doc-detect-canvas");
 const scanGuide = document.getElementById("scan-guide");
 const scanInstruction = document.getElementById("scan-instruction");
 const autoZoomBadge = document.getElementById("auto-zoom-badge");
@@ -85,15 +86,26 @@ const excelRowsTbody = document.getElementById("excel-rows-tbody");
 const EXCEL_TASKS_STORAGE_KEY = "scan2qr_excel_tasks_v2";
 
 let activeAppFeature = "menu"; // "menu" | "1d-to-qr" | "scan-to-excel" | "text-to-qr"
-let currentRoute = "menu"; // "menu" | "1d-to-qr" | "text-to-qr" | "scan-to-excel-hub" | "scan-to-excel-new" | "scan-to-excel-scan"
+let currentRoute = "menu";
 let isHandlingPopState = false;
 let ignoreNextSheetPopState = false;
+let ignorePopStateCount = 0;
 let isSheetHistoryPushed = false;
 let excelTasks = [];
 let activeExcelTaskId = null;
 let previewingExcelTaskId = null;
 let pendingScanData = null; // { text, format }
 let excelToastTimer = null;
+
+// Sub-mode Foto Text-to-QR di dalam menu Scan to Excel
+let isExcelTextPhotoMode = false;
+let excelPhotoHistoryDepth = 0;
+
+// State Auto-Detect & Auto-Crop Dokumen Ala CamScanner
+let docDetectTimer = null;
+let lastDetectedDocQuad = null;
+let smoothedDocQuad = null;
+let docDetectMissCount = 0;
 
 // State Notes Hasil Scan untuk 1D to QR
 let qrScanNotes = []; // [{ id, text, checked }]
@@ -250,6 +262,10 @@ try {
 } catch (err) {}
 
 window.addEventListener("popstate", () => {
+  if (ignorePopStateCount > 0) {
+    ignorePopStateCount -= 1;
+    return;
+  }
   if (ignoreNextSheetPopState) {
     ignoreNextSheetPopState = false;
     return;
@@ -273,8 +289,12 @@ window.addEventListener("popstate", () => {
       closePhotoLensPanel(true);
       return;
     }
+    if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode) {
+      exitExcelTextPhotoMode(true);
+      return;
+    }
 
-    if (currentRoute === "scan-to-excel-scan" || activeAppFeature === "scan-to-excel" && activeExcelTaskId) {
+    if (currentRoute === "scan-to-excel-scan" || (activeAppFeature === "scan-to-excel" && activeExcelTaskId)) {
       openExcelTaskHubView(true);
     } else if (currentRoute === "scan-to-excel-new") {
       openExcelTaskHubView(true);
@@ -316,6 +336,9 @@ function hideAllMainSections() {
 }
 
 function resetTransientScannerUI() {
+  stopDocumentBoundaryDetector();
+  isExcelTextPhotoMode = false;
+  excelPhotoHistoryDepth = 0;
   closeExcelPreviewModalOnly();
   closeFullscreenQrModal();
   closeScanSheetOnly();
@@ -332,6 +355,13 @@ function resetTransientScannerUI() {
   lastScanned = "";
   pendingScanData = null;
   resetCandidateScan();
+}
+
+function isTextPhotoCameraActive() {
+  return (
+    activeAppFeature === "text-to-qr" ||
+    (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode)
+  );
 }
 
 function openFeatureMenu(feature) {
@@ -355,7 +385,11 @@ function openFeatureMenu(feature) {
     if (appHeaderTitle) appHeaderTitle.textContent = "1D to QR";
     if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Semua Barcode 1D/2D atau scanner fisik";
     if (scanTopOverlay) scanTopOverlay.style.display = "";
+    if (scanGuide) scanGuide.style.display = "";
+    if (zoomToggleBtn) zoomToggleBtn.style.display = "inline-flex";
+    if (photoShutterBtn) photoShutterBtn.style.display = "none";
     if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
+    if (keyboardToggleBtn) keyboardToggleBtn.style.display = "inline-flex";
     if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
     if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat Barkode";
     if (scannerCard) scannerCard.classList.add("notes-mode");
@@ -367,17 +401,85 @@ function openFeatureMenu(feature) {
     if (appHeaderTitle) appHeaderTitle.textContent = "Text to QR";
     if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Foto teks/SN lalu pilih blok menjadi QR";
     if (scanTopOverlay) scanTopOverlay.style.display = "none";
+    if (scanGuide) scanGuide.style.display = "none";
+    if (zoomToggleBtn) zoomToggleBtn.style.display = "none";
+    if (zoomBox) zoomBox.classList.remove("open");
+    if (photoShutterBtn) photoShutterBtn.style.display = "inline-flex";
     if (galleryPhotoBtn) galleryPhotoBtn.style.display = "inline-flex";
-    if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
-    if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat QR";
+    if (keyboardToggleBtn) keyboardToggleBtn.style.display = "none";
+    if (manualPanel) manualPanel.classList.remove("open");
+    if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat Barkode";
     if (scannerViewport) {
       scannerViewport.classList.remove("mode-square", "mode-bar");
       scannerViewport.classList.add("mode-full");
     }
     pushAppHistoryState("text-to-qr");
+    startDocumentBoundaryDetector();
   }
 
   ensureCameraStarted();
+}
+function enterExcelTextPhotoMode() {
+  if (activeAppFeature !== "scan-to-excel" || isExcelTextPhotoMode) return;
+  isExcelTextPhotoMode = true;
+  resetCandidateScan();
+
+  if (scanTopOverlay) scanTopOverlay.style.display = "none";
+  if (scanGuide) scanGuide.style.display = "none";
+  if (zoomToggleBtn) zoomToggleBtn.style.display = "none";
+  if (zoomBox) zoomBox.classList.remove("open");
+  if (zoomToggleBtn) zoomToggleBtn.classList.remove("active");
+  if (keyboardToggleBtn) keyboardToggleBtn.style.display = "none";
+  if (manualPanel) manualPanel.classList.remove("open");
+  if (keyboardToggleBtn) keyboardToggleBtn.classList.remove("active");
+  if (galleryPhotoBtn) galleryPhotoBtn.style.display = "inline-flex";
+  if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Salin ke Excel";
+
+  if (scannerViewport) {
+    scannerViewport.classList.remove("mode-square", "mode-bar");
+    scannerViewport.classList.add("mode-full");
+  }
+
+  const task = getActiveExcelTask();
+  if (appHeaderSubtitle && task) {
+    appHeaderSubtitle.textContent = "Arahkan ke teks/dokumen lalu tekan tombol foto";
+  }
+
+  excelPhotoHistoryDepth = 1;
+  pushAppHistoryState("scan-to-excel-scan:text-mode");
+  startDocumentBoundaryDetector();
+}
+
+function exitExcelTextPhotoMode(fromBack = false) {
+  if (!isExcelTextPhotoMode) return;
+  if (!fromBack && excelPhotoHistoryDepth > 0 && window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+
+  stopDocumentBoundaryDetector();
+  isExcelTextPhotoMode = false;
+  excelPhotoHistoryDepth = 0;
+
+  if (scanTopOverlay) scanTopOverlay.style.display = "";
+  if (scanGuide) scanGuide.style.display = "";
+  if (zoomToggleBtn) zoomToggleBtn.style.display = "inline-flex";
+  if (keyboardToggleBtn) keyboardToggleBtn.style.display = "inline-flex";
+  if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
+  if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Pilih Kode";
+
+  const task = getActiveExcelTask();
+  if (appHeaderSubtitle && task) {
+    appHeaderSubtitle.textContent = task.sequentialColumns
+      ? `Input Kolom berurutan (${task.columns.length} kolom)`
+      : `${task.columns.length} kolom Excel`;
+  }
+
+  setScanMode(currentScanMode || "full");
+  currentRoute = "scan-to-excel-scan";
+  if (!isScanLocked) {
+    resumeCameraForNextScan();
+  }
 }
 
 async function openExcelTaskHubView(fromBack = false) {
@@ -532,10 +634,14 @@ function openExcelTaskScanner(taskId, replaceFromForm = false) {
     scannerCard.classList.add("excel-mode");
   }
   if (scanTopOverlay) scanTopOverlay.style.display = "";
+  if (scanGuide) scanGuide.style.display = "";
+  if (zoomToggleBtn) zoomToggleBtn.style.display = "inline-flex";
+  if (photoShutterBtn) photoShutterBtn.style.display = "inline-flex";
+  if (keyboardToggleBtn) keyboardToggleBtn.style.display = "inline-flex";
   if (excelSessionPanel) excelSessionPanel.style.display = "flex";
   if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
   if (manualSubmitBtn) manualSubmitBtn.textContent = "Scan Manual";
-  if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Pilih Kode";
+  if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Salin ke Excel";
 
   setScanMode(currentScanMode || "full");
   renderExcelSessionTable();
@@ -795,7 +901,593 @@ function toggleManualPanel() {
   }
 }
 
-// 7. Engine Foto Lens: Deteksi Barcode & Huruf/Angka Cepat + Sangat Akurat
+// 6B. Engine Auto-Detect & Auto-Crop Dokumen Ala CamScanner
+function orderQuadCorners(pts) {
+  if (!Array.isArray(pts) || pts.length !== 4) return null;
+  let tl = pts[0];
+  let tr = pts[0];
+  let br = pts[0];
+  let bl = pts[0];
+  let minSum = Infinity;
+  let maxSum = -Infinity;
+  let minDiff = Infinity;
+  let maxDiff = -Infinity;
+
+  pts.forEach((p) => {
+    const sum = p.x + p.y;
+    const diff = p.x - p.y;
+    if (sum < minSum) {
+      minSum = sum;
+      tl = p;
+    }
+    if (sum > maxSum) {
+      maxSum = sum;
+      br = p;
+    }
+    if (diff > maxDiff) {
+      maxDiff = diff;
+      tr = p;
+    }
+    if (diff < minDiff) {
+      minDiff = diff;
+      bl = p;
+    }
+  });
+
+  return [tl, tr, br, bl];
+}
+
+function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
+  const ctx = srcCanvas.getContext("2d");
+  if (!ctx || srcW < 30 || srcH < 30) return null;
+
+  try {
+    const imgData = ctx.getImageData(0, 0, srcW, srcH).data;
+    const totalPixels = srcW * srcH;
+    const lum = new Uint8Array(totalPixels);
+    const sat = new Uint8Array(totalPixels);
+
+    let sumLum = 0;
+    for (let i = 0, p = 0; i < imgData.length; i += 4, p += 1) {
+      const r = imgData[i];
+      const g = imgData[i + 1];
+      const b = imgData[i + 2];
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const yVal = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      lum[p] = yVal;
+      sat[p] = maxC - minC;
+      sumLum += yVal;
+    }
+
+    const avgLum = sumLum / Math.max(1, totalPixels);
+    const brightThresh = Math.max(115, Math.min(210, avgLum * 1.12));
+
+    // Masking piksel kertas/label (cerah & saturasi rendah/netral)
+    const mask = new Uint8Array(totalPixels);
+    for (let p = 0; p < totalPixels; p += 1) {
+      if (lum[p] >= brightThresh && sat[p] <= 75) {
+        mask[p] = 1;
+      }
+    }
+
+    // Erodi & dilasi 3x3 ringan agar bintik noise hilang
+    const cleanMask = new Uint8Array(totalPixels);
+    for (let y = 1; y < srcH - 1; y += 1) {
+      const rOff = y * srcW;
+      for (let x = 1; x < srcW - 1; x += 1) {
+        let count = 0;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          const nOff = (y + dy) * srcW;
+          for (let dx = -1; dx <= 1; dx += 1) {
+            count += mask[nOff + (x + dx)];
+          }
+        }
+        if (count >= 5) {
+          cleanMask[rOff + x] = 1;
+        }
+      }
+    }
+
+    // Cari batas ekstrem 4 sudut dokumen dari cleanMask
+    let tl = null;
+    let tr = null;
+    let br = null;
+    let bl = null;
+    let minSum = Infinity;
+    let maxSum = -Infinity;
+    let minDiff = Infinity;
+    let maxDiff = -Infinity;
+    let activeCount = 0;
+
+    const marginX = Math.max(2, Math.floor(srcW * 0.02));
+    const marginY = Math.max(2, Math.floor(srcH * 0.02));
+
+    for (let y = marginY; y < srcH - marginY; y += 1) {
+      const rOff = y * srcW;
+      for (let x = marginX; x < srcW - marginX; x += 1) {
+        if (!cleanMask[rOff + x]) continue;
+        activeCount += 1;
+        const sum = x + y;
+        const diff = x - y;
+        if (sum < minSum) {
+          minSum = sum;
+          tl = { x, y };
+        }
+        if (sum > maxSum) {
+          maxSum = sum;
+          br = { x, y };
+        }
+        if (diff > maxDiff) {
+          maxDiff = diff;
+          tr = { x, y };
+        }
+        if (diff < minDiff) {
+          minDiff = diff;
+          bl = { x, y };
+        }
+      }
+    }
+
+    const activeRatio = activeCount / totalPixels;
+    if (!tl || !tr || !br || !bl || activeRatio < 0.08 || activeRatio > 0.92) {
+      return null;
+    }
+
+    const ordered = orderQuadCorners([tl, tr, br, bl]);
+    if (!ordered) return null;
+
+    // Hitung luas poligon dengan Shoelace formula
+    let area = 0;
+    for (let i = 0; i < 4; i += 1) {
+      const j = (i + 1) % 4;
+      area += ordered[i].x * ordered[j].y - ordered[j].x * ordered[i].y;
+    }
+    area = Math.abs(area) / 2;
+    const areaRatio = area / totalPixels;
+    if (areaRatio < 0.12 || areaRatio > 0.94) {
+      return null;
+    }
+
+    // Konversi ke koordinat ternormalisasi [0..1] dengan sedikit padding aman
+    const padNorm = 0.008;
+    const normQuad = ordered.map((pt, idx) => {
+      let nx = pt.x / srcW;
+      let ny = pt.y / srcH;
+      if (idx === 0) {
+        nx = Math.max(0, nx - padNorm);
+        ny = Math.max(0, ny - padNorm);
+      } else if (idx === 1) {
+        nx = Math.min(1, nx + padNorm);
+        ny = Math.max(0, ny - padNorm);
+      } else if (idx === 2) {
+        nx = Math.min(1, nx + padNorm);
+        ny = Math.min(1, ny + padNorm);
+      } else {
+        nx = Math.max(0, nx - padNorm);
+        ny = Math.min(1, ny + padNorm);
+      }
+      return { x: nx, y: ny };
+    });
+
+    const topWidth = Math.hypot(normQuad[1].x - normQuad[0].x, normQuad[1].y - normQuad[0].y);
+    const bottomWidth = Math.hypot(normQuad[2].x - normQuad[3].x, normQuad[2].y - normQuad[3].y);
+    const leftHeight = Math.hypot(normQuad[3].x - normQuad[0].x, normQuad[3].y - normQuad[0].y);
+    const rightHeight = Math.hypot(normQuad[2].x - normQuad[1].x, normQuad[2].y - normQuad[1].y);
+
+    if (
+      Math.min(topWidth, bottomWidth) < 0.22 ||
+      Math.min(leftHeight, rightHeight) < 0.16
+    ) {
+      return null;
+    }
+
+    return normQuad;
+  } catch (err) {
+    return null;
+  }
+}
+
+function drawDocumentBoundaryOverlay(quad) {
+  if (!docDetectCanvas || !scannerViewport) return;
+  const rect = scannerViewport.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cw = Math.round(rect.width * dpr);
+  const ch = Math.round(rect.height * dpr);
+  if (docDetectCanvas.width !== cw || docDetectCanvas.height !== ch) {
+    docDetectCanvas.width = cw;
+    docDetectCanvas.height = ch;
+  }
+
+  const ctx = docDetectCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, cw, ch);
+
+  if (!quad || quad.length !== 4) return;
+
+  const videoEl = document.querySelector("#reader video");
+  let offsetX = 0;
+  let offsetY = 0;
+  let drawW = cw;
+  let drawH = ch;
+
+  if (videoEl && videoEl.videoWidth && videoEl.videoHeight) {
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    const scale = Math.max(cw / vw, ch / vh);
+    drawW = vw * scale;
+    drawH = vh * scale;
+    offsetX = (cw - drawW) / 2;
+    offsetY = (ch - drawH) / 2;
+  }
+
+  const pts = quad.map((p) => ({
+    x: offsetX + p.x * drawW,
+    y: offsetY + p.y * drawH
+  }));
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  ctx.lineTo(pts[1].x, pts[1].y);
+  ctx.lineTo(pts[2].x, pts[2].y);
+  ctx.lineTo(pts[3].x, pts[3].y);
+  ctx.closePath();
+
+  ctx.fillStyle = "rgba(16, 185, 129, 0.08)";
+  ctx.fill();
+
+  ctx.lineWidth = 2.6 * dpr;
+  ctx.strokeStyle = "#10b981";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+
+  pts.forEach((pt) => {
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 4.2 * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = "#34d399";
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function runDocumentBoundaryFrame() {
+  if (
+    !isTextPhotoCameraActive() ||
+    !isCameraRunning ||
+    (photoLensOverlay && photoLensOverlay.classList.contains("open")) ||
+    document.visibilityState !== "visible"
+  ) {
+    return;
+  }
+
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return;
+  }
+
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  const maxSample = 220;
+  const scale = Math.min(1, maxSample / Math.max(vw, vh));
+  const sw = Math.max(32, Math.round(vw * scale));
+  const sh = Math.max(32, Math.round(vh * scale));
+
+  const sampleCanvas = document.createElement("canvas");
+  sampleCanvas.width = sw;
+  sampleCanvas.height = sh;
+  const sCtx = sampleCanvas.getContext("2d");
+  if (!sCtx) return;
+
+  sCtx.drawImage(videoEl, 0, 0, sw, sh);
+  const detectedQuad = detectDocumentQuadFromCanvas(sampleCanvas, sw, sh);
+
+  if (detectedQuad) {
+    docDetectMissCount = 0;
+    lastDetectedDocQuad = detectedQuad;
+    if (!smoothedDocQuad) {
+      smoothedDocQuad = detectedQuad.map((p) => ({ ...p }));
+    } else {
+      const alpha = 0.35;
+      smoothedDocQuad = smoothedDocQuad.map((prev, idx) => ({
+        x: prev.x + (detectedQuad[idx].x - prev.x) * alpha,
+        y: prev.y + (detectedQuad[idx].y - prev.y) * alpha
+      }));
+    }
+    drawDocumentBoundaryOverlay(smoothedDocQuad);
+  } else {
+    docDetectMissCount += 1;
+    if (docDetectMissCount > 4) {
+      lastDetectedDocQuad = null;
+      smoothedDocQuad = null;
+      drawDocumentBoundaryOverlay(null);
+    }
+  }
+}
+
+function startDocumentBoundaryDetector() {
+  stopDocumentBoundaryDetector();
+  if (docDetectCanvas) {
+    docDetectCanvas.classList.add("active");
+  }
+  docDetectTimer = setInterval(runDocumentBoundaryFrame, 110);
+}
+
+function stopDocumentBoundaryDetector() {
+  if (docDetectTimer) {
+    clearInterval(docDetectTimer);
+    docDetectTimer = null;
+  }
+  lastDetectedDocQuad = null;
+  smoothedDocQuad = null;
+  docDetectMissCount = 0;
+  if (docDetectCanvas) {
+    const ctx = docDetectCanvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, docDetectCanvas.width, docDetectCanvas.height);
+    }
+    docDetectCanvas.classList.remove("active");
+  }
+}
+
+function solveLinearSystem8x8(A, b) {
+  const n = 8;
+  const M = A.map((row, i) => [...row, b[i]]);
+
+  for (let col = 0; col < n; col += 1) {
+    let pivotRow = col;
+    for (let r = col + 1; r < n; r += 1) {
+      if (Math.abs(M[r][col]) > Math.abs(M[pivotRow][col])) {
+        pivotRow = r;
+      }
+    }
+    if (Math.abs(M[pivotRow][col]) < 1e-9) return null;
+    if (pivotRow !== col) {
+      const tmp = M[col];
+      M[col] = M[pivotRow];
+      M[pivotRow] = tmp;
+    }
+
+    const pivotVal = M[col][col];
+    for (let c = col; c <= n; c += 1) {
+      M[col][c] /= pivotVal;
+    }
+
+    for (let r = 0; r < n; r += 1) {
+      if (r === col) continue;
+      const factor = M[r][col];
+      for (let c = col; c <= n; c += 1) {
+        M[r][c] -= factor * M[col][c];
+      }
+    }
+  }
+
+  return M.map((row) => row[n]);
+}
+
+function computeHomographyFromRectToQuad(dstW, dstH, srcQuadPx) {
+  const dstPts = [
+    { x: 0, y: 0 },
+    { x: dstW, y: 0 },
+    { x: dstW, y: dstH },
+    { x: 0, y: dstH }
+  ];
+
+  const A = [];
+  const b = [];
+  for (let i = 0; i < 4; i += 1) {
+    const u = dstPts[i].x;
+    const v = dstPts[i].y;
+    const x = srcQuadPx[i].x;
+    const y = srcQuadPx[i].y;
+    A.push([u, v, 1, 0, 0, 0, -u * x, -v * x]);
+    b.push(x);
+    A.push([0, 0, 0, u, v, 1, -u * y, -v * y]);
+    b.push(y);
+  }
+
+  return solveLinearSystem8x8(A, b);
+}
+
+function warpDocumentQuadToCanvas(img, normQuad) {
+  const naturalW = img.naturalWidth || img.width;
+  const naturalH = img.naturalHeight || img.height;
+
+  const srcQuadPx = normQuad.map((p) => ({
+    x: p.x * naturalW,
+    y: p.y * naturalH
+  }));
+
+  const topW = Math.hypot(srcQuadPx[1].x - srcQuadPx[0].x, srcQuadPx[1].y - srcQuadPx[0].y);
+  const botW = Math.hypot(srcQuadPx[2].x - srcQuadPx[3].x, srcQuadPx[2].y - srcQuadPx[3].y);
+  const leftH = Math.hypot(srcQuadPx[3].x - srcQuadPx[0].x, srcQuadPx[3].y - srcQuadPx[0].y);
+  const rightH = Math.hypot(srcQuadPx[2].x - srcQuadPx[1].x, srcQuadPx[2].y - srcQuadPx[1].y);
+
+  let targetW = Math.max(120, Math.round((topW + botW) / 2));
+  let targetH = Math.max(120, Math.round((leftH + rightH) / 2));
+
+  const maxOutDim = 1480;
+  if (Math.max(targetW, targetH) > maxOutDim) {
+    const scale = maxOutDim / Math.max(targetW, targetH);
+    targetW = Math.round(targetW * scale);
+    targetH = Math.round(targetH * scale);
+  }
+
+  const h = computeHomographyFromRectToQuad(targetW, targetH, srcQuadPx);
+  if (!h) return null;
+
+  const srcCanvas = document.createElement("canvas");
+  srcCanvas.width = naturalW;
+  srcCanvas.height = naturalH;
+  const sCtx = srcCanvas.getContext("2d");
+  if (!sCtx) return null;
+  sCtx.drawImage(img, 0, 0, naturalW, naturalH);
+  const srcData = sCtx.getImageData(0, 0, naturalW, naturalH).data;
+
+  const dstCanvas = document.createElement("canvas");
+  dstCanvas.width = targetW;
+  dstCanvas.height = targetH;
+  const dCtx = dstCanvas.getContext("2d");
+  if (!dCtx) return null;
+  const dstImgData = dCtx.createImageData(targetW, targetH);
+  const dstData = dstImgData.data;
+
+  const [h0, h1, h2, h3, h4, h5, h6, h7] = h;
+  const maxSx = naturalW - 1;
+  const maxSy = naturalH - 1;
+
+  for (let v = 0; v < targetH; v += 1) {
+    const rowBase = v * targetW * 4;
+    const h1v_h2 = h1 * v + h2;
+    const h4v_h5 = h4 * v + h5;
+    const h7v_1 = h7 * v + 1;
+
+    for (let u = 0; u < targetW; u += 1) {
+      const denom = h6 * u + h7v_1;
+      const invDenom = denom !== 0 ? 1 / denom : 1;
+      const sx = Math.max(0, Math.min(maxSx, Math.round((h0 * u + h1v_h2) * invDenom)));
+      const sy = Math.max(0, Math.min(maxSy, Math.round((h3 * u + h4v_h5) * invDenom)));
+
+      const sIdx = (sy * naturalW + sx) * 4;
+      const dIdx = rowBase + u * 4;
+      dstData[dIdx] = srcData[sIdx];
+      dstData[dIdx + 1] = srcData[sIdx + 1];
+      dstData[dIdx + 2] = srcData[sIdx + 2];
+      dstData[dIdx + 3] = 255;
+    }
+  }
+
+  dCtx.putImageData(dstImgData, 0, 0);
+  return dstCanvas;
+}
+
+function applyCamScannerDocumentFilter(canvas) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !canvas.width || !canvas.height) return;
+
+  try {
+    const w = canvas.width;
+    const h = canvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    const total = w * h;
+    const lum = new Uint8Array(total);
+
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      lum[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    }
+
+    const tile = Math.max(24, Math.round(Math.min(w, h) / 14));
+    const gw = Math.max(1, Math.ceil(w / tile));
+    const gh = Math.max(1, Math.ceil(h / tile));
+    const bgGrid = new Float32Array(gw * gh);
+
+    for (let gy = 0; gy < gh; gy += 1) {
+      const y0 = gy * tile;
+      const y1 = Math.min(h, y0 + tile);
+      for (let gx = 0; gx < gw; gx += 1) {
+        const x0 = gx * tile;
+        const x1 = Math.min(w, x0 + tile);
+        let maxL = 80;
+        for (let y = y0; y < y1; y += 2) {
+          const rOff = y * w;
+          for (let x = x0; x < x1; x += 2) {
+            const v = lum[rOff + x];
+            if (v > maxL) maxL = v;
+          }
+        }
+        bgGrid[gy * gw + gx] = maxL;
+      }
+    }
+
+    for (let y = 0; y < h; y += 1) {
+      const fy = Math.min(gh - 1, Math.max(0, (y + 0.5) / tile - 0.5));
+      const gy0 = Math.floor(fy);
+      const gy1 = Math.min(gh - 1, gy0 + 1);
+      const wy = fy - gy0;
+      const rOff = y * w;
+
+      for (let x = 0; x < w; x += 1) {
+        const fx = Math.min(gw - 1, Math.max(0, (x + 0.5) / tile - 0.5));
+        const gx0 = Math.floor(fx);
+        const gx1 = Math.min(gw - 1, gx0 + 1);
+        const wx = fx - gx0;
+
+        const b00 = bgGrid[gy0 * gw + gx0];
+        const b10 = bgGrid[gy0 * gw + gx1];
+        const b01 = bgGrid[gy1 * gw + gx0];
+        const b11 = bgGrid[gy1 * gw + gx1];
+        const localBg =
+          (b00 * (1 - wx) + b10 * wx) * (1 - wy) +
+          (b01 * (1 - wx) + b11 * wx) * wy;
+
+        const idx = (rOff + x) * 4;
+        const scale = 252 / Math.max(70, localBg);
+
+        for (let c = 0; c < 3; c += 1) {
+          let val = data[idx + c] * scale;
+          if (val > 195) {
+            val = 255;
+          } else if (val < 135) {
+            val = Math.max(0, val * 0.62);
+          } else {
+            val = ((val - 135) / 60) * 255;
+          }
+          data[idx + c] = Math.max(0, Math.min(255, Math.round(val)));
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  } catch (err) {}
+}
+
+async function processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad = null) {
+  const img = await loadImageElement(rawImageUrl);
+  const naturalW = img.naturalWidth || img.width;
+  const naturalH = img.naturalHeight || img.height;
+
+  let quadToUse = preDetectedQuad;
+  if (!quadToUse) {
+    const maxSample = 240;
+    const scale = Math.min(1, maxSample / Math.max(naturalW, naturalH));
+    const sw = Math.max(32, Math.round(naturalW * scale));
+    const sh = Math.max(32, Math.round(naturalH * scale));
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = sw;
+    sampleCanvas.height = sh;
+    const sCtx = sampleCanvas.getContext("2d");
+    if (sCtx) {
+      sCtx.drawImage(img, 0, 0, sw, sh);
+      quadToUse = detectDocumentQuadFromCanvas(sampleCanvas, sw, sh);
+    }
+  }
+
+  let outputCanvas = null;
+  if (quadToUse) {
+    outputCanvas = warpDocumentQuadToCanvas(img, quadToUse);
+  }
+
+  if (!outputCanvas) {
+    const maxOutDim = 1480;
+    const scale = Math.max(naturalW, naturalH) > maxOutDim
+      ? maxOutDim / Math.max(naturalW, naturalH)
+      : 1;
+    outputCanvas = document.createElement("canvas");
+    outputCanvas.width = Math.max(1, Math.round(naturalW * scale));
+    outputCanvas.height = Math.max(1, Math.round(naturalH * scale));
+    const oCtx = outputCanvas.getContext("2d");
+    if (oCtx) {
+      oCtx.drawImage(img, 0, 0, outputCanvas.width, outputCanvas.height);
+    }
+  }
+
+  applyCamScannerDocumentFilter(outputCanvas);
+  return outputCanvas.toDataURL("image/jpeg", 0.95);
+}
+// 7. Engine Foto Lens: Auto-Crop CamScanner + Deteksi Barcode & Huruf/Angka Cepat
 function setPhotoLensStatus(msg, hide = false) {
   if (!photoLensStatus) return;
   photoLensStatus.textContent = msg;
@@ -817,6 +1509,10 @@ function clearPhotoLensState() {
   if (photoLensActionBar) {
     photoLensActionBar.classList.remove("visible");
   }
+  if (capturedPhotoPreview) {
+    capturedPhotoPreview.removeAttribute("src");
+    capturedPhotoPreview.classList.remove("has-image");
+  }
 }
 
 function openPhotoLensPanel() {
@@ -824,19 +1520,42 @@ function openPhotoLensPanel() {
   const wasOpen = photoLensOverlay.classList.contains("open");
   photoLensOverlay.classList.add("open");
   photoShutterBtn.classList.add("active");
+  stopDocumentBoundaryDetector();
   pauseCameraForSingleScan();
   if (!wasOpen) {
-    pushAppHistoryState(`${currentRoute}:photo-lens`);
+    if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode) {
+      excelPhotoHistoryDepth = 2;
+      pushAppHistoryState("scan-to-excel-scan:photo-lens");
+    } else {
+      pushAppHistoryState(`${activeAppFeature}:photo-lens`);
+    }
   }
 }
 
 function closePhotoLensPanel(fromBack = false) {
   if (!fromBack && photoLensOverlay && photoLensOverlay.classList.contains("open")) {
+    if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode && excelPhotoHistoryDepth > 1) {
+      const depthToPop = excelPhotoHistoryDepth;
+      excelPhotoHistoryDepth = 0;
+      ocrRunToken += 1;
+      clearPhotoLensState();
+      photoLensOverlay.classList.remove("open");
+      if (photoShutterBtn) photoShutterBtn.classList.remove("active");
+      exitExcelTextPhotoMode(true);
+      ignorePopStateCount = depthToPop;
+      try {
+        window.history.go(-depthToPop);
+      } catch (err) {
+        ignorePopStateCount = 0;
+      }
+      return;
+    }
     if (window.history.length > 1) {
       window.history.back();
       return;
     }
   }
+
   ocrRunToken += 1;
   clearPhotoLensState();
   if (photoLensOverlay) {
@@ -845,6 +1564,28 @@ function closePhotoLensPanel(fromBack = false) {
   if (photoShutterBtn) {
     photoShutterBtn.classList.remove("active");
   }
+
+  if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode) {
+    if (fromBack && excelPhotoHistoryDepth > 1) {
+      excelPhotoHistoryDepth = 0;
+      exitExcelTextPhotoMode(true);
+      ignorePopStateCount = 1;
+      try {
+        window.history.go(-1);
+      } catch (err) {
+        ignorePopStateCount = 0;
+      }
+      return;
+    }
+    exitExcelTextPhotoMode(true);
+    return;
+  }
+
+  if (activeAppFeature === "text-to-qr") {
+    currentRoute = "text-to-qr";
+    startDocumentBoundaryDetector();
+  }
+
   if (!isScanLocked && activeAppFeature !== "menu") {
     resumeCameraForNextScan();
   }
@@ -1751,13 +2492,22 @@ function sortDetectedItemsReadingOrder(items) {
   });
 }
 
-async function applyDetectedPhotoText(imageUrl) {
+async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   const token = ++ocrRunToken;
   clearPhotoLensState();
-  setPhotoLensStatus("Mendeteksi angka, huruf & barcode...", false);
+  setPhotoLensStatus("Memotong dokumen & mendeteksi huruf/angka...", false);
 
   try {
-    const img = await loadImageElement(imageUrl);
+    // Auto-crop + filter bersih putih ala CamScanner sehingga tampil seperti Gambar 2
+    const processedDataUrl = await processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad);
+    if (token !== ocrRunToken) return;
+
+    if (capturedPhotoPreview) {
+      capturedPhotoPreview.src = processedDataUrl;
+      capturedPhotoPreview.classList.add("has-image");
+    }
+
+    const img = await loadImageElement(processedDataUrl);
     if (token !== ocrRunToken) return;
 
     ocrNaturalWidth = img.naturalWidth || img.width;
@@ -1765,7 +2515,7 @@ async function applyDetectedPhotoText(imageUrl) {
 
     const { canvas: enhancedCanvas, scale, cleanGray } = buildEnhancedCanvasForOcr(img);
 
-    // Tahap 1 (Instan < 200ms): Deteksi & render kotak barcode terlebih dahulu agar layar tidak menunggu lama
+    // Tahap 1: Deteksi barcode pada gambar hasil scan
     const nativeBarcodes = await detectBarcodeBoxesWithNativeDetector(img);
     if (token !== ocrRunToken) return;
 
@@ -1779,11 +2529,12 @@ async function applyDetectedPhotoText(imageUrl) {
 
     if (barcodeItems.length > 0) {
       ocrWordItems = sortDetectedItemsReadingOrder(barcodeItems);
+      selectedOcrIndices = ocrWordItems.map((_, idx) => idx);
       renderOcrWordBoxes();
       setPhotoLensStatus("Barcode terdeteksi • Membaca angka & huruf...", false);
     }
 
-    // Tahap 2: Deteksi angka & huruf (SN/PN/teks) dengan worker persisten
+    // Tahap 2: Deteksi semua huruf & angka lalu auto-blok seluruhnya
     const tesseractWords = await detectWordBoxesWithTesseract(enhancedCanvas, scale, cleanGray);
     if (token !== ocrRunToken) return;
 
@@ -1795,10 +2546,13 @@ async function applyDetectedPhotoText(imageUrl) {
 
     const combinedItems = sortDetectedItemsReadingOrder([...barcodeItems, ...cleanWords]);
     ocrWordItems = combinedItems;
+
+    // Auto-blok semua huruf dan angka yang terdeteksi
+    selectedOcrIndices = ocrWordItems.map((_, idx) => idx);
     renderOcrWordBoxes();
 
     if (ocrWordItems.length > 0) {
-      setPhotoLensStatus("Ketuk angka/barcode atau geser untuk memblok biru", false);
+      setPhotoLensStatus("", true);
     } else {
       setPhotoLensStatus("Angka/huruf tidak terbaca, ketuk Foto Ulang", false);
     }
@@ -1865,19 +2619,32 @@ function updateFloatingActionBarPosition() {
   photoLensActionBar.classList.add("visible");
   setPhotoLensStatus("", true);
 
-  const barWidth = photoLensActionBar.offsetWidth || 184;
+  const barWidth = photoLensActionBar.offsetWidth || 196;
   const barHeight = photoLensActionBar.offsetHeight || 42;
-  const halfBar = barWidth / 2;
+  const gap = 10;
 
-  const centerX = (minLeft + maxRight) / 2;
-  const clampedCenterX = Math.max(halfBar + 10, Math.min(stageRect.width - halfBar - 10, centerX));
+  let targetLeft = 0;
+  let targetTop = (minTop + maxBottom) / 2 - barHeight / 2;
 
-  let targetTop = minTop - 10;
-  if (targetTop - barHeight < 56) {
-    targetTop = Math.min(stageRect.height - 12, maxBottom + barHeight + 14);
+  // Prioritaskan penempatan di samping kanan atau kiri blok biru
+  if (maxRight + gap + barWidth <= stageRect.width - 8) {
+    targetLeft = maxRight + gap;
+  } else if (minLeft - gap - barWidth >= 8) {
+    targetLeft = minLeft - gap - barWidth;
+  } else {
+    // Jika blok melebar penuh layar, tempatkan tepat di tepi kanan/bawah blok dalam batas aman
+    targetLeft = Math.max(8, Math.min(stageRect.width - barWidth - 8, maxRight - barWidth));
+    if (maxBottom + gap + barHeight <= stageRect.height - 12) {
+      targetTop = maxBottom + gap;
+    } else if (minTop - gap - barHeight >= 56) {
+      targetTop = minTop - gap - barHeight;
+    }
   }
 
-  photoLensActionBar.style.left = `${clampedCenterX}px`;
+  targetLeft = Math.max(8, Math.min(stageRect.width - barWidth - 8, targetLeft));
+  targetTop = Math.max(56, Math.min(stageRect.height - barHeight - 12, targetTop));
+
+  photoLensActionBar.style.left = `${targetLeft}px`;
   photoLensActionBar.style.top = `${targetTop}px`;
 }
 
@@ -2133,22 +2900,40 @@ function getSelectedPhotoSelection() {
 }
 
 function retakePhotoOnly() {
-  openPhotoLensPanel();
-  if (photoCaptureInput) {
-    photoCaptureInput.value = "";
-    photoCaptureInput.click();
+  ocrRunToken += 1;
+  clearPhotoLensState();
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
+  if (activeAppFeature === "text-to-qr") {
+    currentRoute = "text-to-qr";
+    startDocumentBoundaryDetector();
+  } else if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode) {
+    currentRoute = "scan-to-excel-scan:text-mode";
+    startDocumentBoundaryDetector();
+  }
+  if (!isScanLocked && activeAppFeature !== "menu") {
+    resumeCameraForNextScan();
   }
 }
 
 function triggerPhotoCapture() {
+  // Di menu Scan to Excel: klik foto pertama kali masuk ke mode kamera Text to QR + auto-detect dulu
+  if (activeAppFeature === "scan-to-excel" && !isExcelTextPhotoMode) {
+    enterExcelTextPhotoMode();
+    return;
+  }
+
+  const capturedQuad = lastDetectedDocQuad ? lastDetectedDocQuad.map((p) => ({ ...p })) : null;
   clearPhotoLensState();
   const snapDataUrl = captureSnapshotFromVideo();
   openPhotoLensPanel();
 
-  if (snapDataUrl && capturedPhotoPreview) {
-    capturedPhotoPreview.src = snapDataUrl;
-    capturedPhotoPreview.classList.add("has-image");
-    applyDetectedPhotoText(snapDataUrl);
+  if (snapDataUrl) {
+    applyDetectedPhotoText(snapDataUrl, capturedQuad);
   } else if (photoCaptureInput) {
     setPhotoLensStatus("Ambil foto angka atau huruf...", false);
     photoCaptureInput.value = "";
@@ -2196,7 +2981,26 @@ function copyPhotoText() {
   if (activeAppFeature === "1d-to-qr") {
     addQrScanNote(targetVal);
   }
-  resetScan(true);
+  if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode) {
+    const depthToPop = excelPhotoHistoryDepth;
+    excelPhotoHistoryDepth = 0;
+    ocrRunToken += 1;
+    clearPhotoLensState();
+    if (photoLensOverlay) photoLensOverlay.classList.remove("open");
+    if (photoShutterBtn) photoShutterBtn.classList.remove("active");
+    exitExcelTextPhotoMode(true);
+    showExcelScanToast(`Teks disalin: ${targetVal}`);
+    if (depthToPop > 0) {
+      ignorePopStateCount = depthToPop;
+      try {
+        window.history.go(-depthToPop);
+      } catch (err) {
+        ignorePopStateCount = 0;
+      }
+    }
+    return;
+  }
+  closePhotoLensPanel();
   if (activeAppFeature === "1d-to-qr") {
     showQrNotesFeedback("Teks dari foto disalin!", false);
   } else if (statusBadge) {
@@ -2217,28 +3021,44 @@ function createBarcodeFromPhotoText() {
     return;
   }
   writeTextToClipboardSafe(targetVal);
-  ocrRunToken += 1;
-  clearPhotoLensState();
-  if (photoLensOverlay) {
-    photoLensOverlay.classList.remove("open");
-  }
-  if (photoShutterBtn) {
-    photoShutterBtn.classList.remove("active");
+
+  // Di menu Scan to Excel: langsung salin ke Excel & kembali ke mode scan barcode standar
+  if (activeAppFeature === "scan-to-excel") {
+    const depthToPop = excelPhotoHistoryDepth;
+    excelPhotoHistoryDepth = 0;
+    ocrRunToken += 1;
+    clearPhotoLensState();
+    if (photoLensOverlay) {
+      photoLensOverlay.classList.remove("open");
+    }
+    if (photoShutterBtn) {
+      photoShutterBtn.classList.remove("active");
+    }
+    isScanLocked = false;
+    lastScanned = "";
+    pendingScanData = null;
+    resetCandidateScan();
+    exitExcelTextPhotoMode(true);
+    addScannedItemToExcel(targetVal);
+
+    if (depthToPop > 0) {
+      ignorePopStateCount = depthToPop;
+      try {
+        window.history.go(-depthToPop);
+      } catch (err) {
+        ignorePopStateCount = 0;
+      }
+    }
+    return;
   }
 
+  // Di menu Text to QR: pertahankan photoLensOverlay terbuka di bawah modal QR agar Back fisik kembali ke gambar foto lagi
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
   resetCandidateScan();
 
   const resolvedFormat = detectedFormat || detectScanFormatType(targetVal, "OCR Text");
-  if (activeAppFeature === "scan-to-excel") {
-    currentRoute = "scan-to-excel-scan";
-    generateQR(targetVal, resolvedFormat);
-    return;
-  }
-
-  currentRoute = activeAppFeature;
   generateQR(targetVal, resolvedFormat);
   completeScan();
 }
@@ -2249,12 +3069,10 @@ function handlePhotoFileSelected(e) {
   const reader = new FileReader();
   reader.onload = (ev) => {
     const resultUrl = ev.target && ev.target.result ? String(ev.target.result) : "";
-    if (resultUrl && capturedPhotoPreview) {
-      capturedPhotoPreview.src = resultUrl;
-      capturedPhotoPreview.classList.add("has-image");
-      applyDetectedPhotoText(resultUrl);
+    if (resultUrl) {
+      openPhotoLensPanel();
+      applyDetectedPhotoText(resultUrl, null);
     }
-    openPhotoLensPanel();
   };
   reader.readAsDataURL(file);
 }
@@ -2922,12 +3740,19 @@ function completeScan() {
   if (fullscreenQrModal) {
     fullscreenQrModal.classList.add("open");
     fullscreenQrModal.setAttribute("aria-hidden", "false");
-    const qrModalRoute = `${activeAppFeature}:qr-modal`;
+    const isFromPhotoLens =
+      activeAppFeature === "text-to-qr" &&
+      photoLensOverlay &&
+      photoLensOverlay.classList.contains("open");
+    const qrModalRoute = isFromPhotoLens
+      ? "text-to-qr:photo-lens:qr-modal"
+      : `${activeAppFeature}:qr-modal`;
     if (isSheetHistoryPushed) {
       replaceAppHistoryState(qrModalRoute);
     } else {
       pushAppHistoryState(qrModalRoute);
     }
+    isSheetHistoryPushed = false;
   }
 }
 
@@ -3046,6 +3871,7 @@ function generateQR(text, formatName = "Scan") {
 }
 
 function handleManualSubmit() {
+  if (isTextPhotoCameraActive()) return;
   if (scannerInput.value.trim() !== "") {
     const rawVal = scannerInput.value.trim();
     const detectedFmt = detectScanFormatType(rawVal);
@@ -3073,6 +3899,7 @@ let physicalScannerTimer = null;
 document.addEventListener("keydown", (e) => {
   if (
     activeAppFeature === "menu" ||
+    isTextPhotoCameraActive() ||
     currentRoute === "scan-to-excel-hub" ||
     currentRoute === "scan-to-excel-new"
   ) {
@@ -3149,14 +3976,6 @@ function resetScan(fromBack = false) {
   isSheetHistoryPushed = false;
   closeFullscreenQrModal();
   closeScanSheetOnly();
-  ocrRunToken += 1;
-  clearPhotoLensState();
-  if (photoLensOverlay) {
-    photoLensOverlay.classList.remove("open");
-  }
-  if (photoShutterBtn) {
-    photoShutterBtn.classList.remove("active");
-  }
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
@@ -3173,8 +3992,33 @@ function resetScan(fromBack = false) {
   qrWrapper.innerHTML =
     '<span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>';
   scannerInput.value = "";
+
+  // Di menu Text to QR: setelah selesai buat barcode & klik Back, kembali ke tampilan gambar foto lagi
+  if (
+    activeAppFeature === "text-to-qr" &&
+    photoLensOverlay &&
+    photoLensOverlay.classList.contains("open")
+  ) {
+    currentRoute = "text-to-qr:photo-lens";
+    if (ocrWordItems.length > 0) {
+      renderOcrWordBoxes();
+    }
+    return;
+  }
+
+  ocrRunToken += 1;
+  clearPhotoLensState();
+  if (photoLensOverlay) {
+    photoLensOverlay.classList.remove("open");
+  }
+  if (photoShutterBtn) {
+    photoShutterBtn.classList.remove("active");
+  }
   if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
     currentRoute = activeAppFeature;
+  }
+  if (activeAppFeature === "text-to-qr") {
+    startDocumentBoundaryDetector();
   }
   if (activeAppFeature !== "menu") {
     resumeCameraForNextScan();
@@ -3421,7 +4265,7 @@ function getRequiredConfirmHits(fmt, cleanText) {
 function onScanSuccess(decodedText, decodedResult) {
   if (
     activeAppFeature === "menu" ||
-    activeAppFeature === "text-to-qr" ||
+    isTextPhotoCameraActive() ||
     currentRoute === "scan-to-excel-hub" ||
     currentRoute === "scan-to-excel-new"
   ) {
@@ -3509,7 +4353,7 @@ async function runNativeLiveFrameScan() {
     !isCameraRunning ||
     isScanLocked ||
     activeAppFeature === "menu" ||
-    activeAppFeature === "text-to-qr" ||
+    isTextPhotoCameraActive() ||
     currentRoute === "scan-to-excel-hub" ||
     currentRoute === "scan-to-excel-new" ||
     document.visibilityState !== "visible" ||
@@ -3596,6 +4440,7 @@ function ensureCameraStarted() {
 }
 
 async function stopCameraGracefully() {
+  stopDocumentBoundaryDetector();
   if (nativeLiveScanTimer) {
     clearInterval(nativeLiveScanTimer);
     nativeLiveScanTimer = null;
