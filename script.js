@@ -37,7 +37,25 @@ const sheetBarcodeValue = document.getElementById("sheet-barcode-value");
 const sheetFormatValue = document.getElementById("sheet-format-value");
 const sheetExcelColRow = document.getElementById("sheet-excel-col-row");
 const sheetExcelColValue = document.getElementById("sheet-excel-col-value");
+const sheetCopyBtn = document.getElementById("sheet-copy-btn");
 const fullscreenQrModal = document.getElementById("fullscreen-qr-modal");
+
+// Elemen Notes Hasil Scan (Menu 1D to QR)
+const qrScanNotesPanel = document.getElementById("qr-scan-notes-panel");
+const qrNotesCount = document.getElementById("qr-notes-count");
+const qrCopyAllBtn = document.getElementById("qr-copy-all-btn");
+const qrCopySelectedBtn = document.getElementById("qr-copy-selected-btn");
+const qrClearNotesBtn = document.getElementById("qr-clear-notes-btn");
+const qrNotesFeedback = document.getElementById("qr-notes-feedback");
+const qrNotesList = document.getElementById("qr-notes-list");
+
+// Elemen Preview Excel Modal
+const excelPreviewModal = document.getElementById("excel-preview-modal");
+const excelPreviewTitle = document.getElementById("excel-preview-title");
+const excelPreviewSubtitle = document.getElementById("excel-preview-subtitle");
+const excelPreviewThead = document.getElementById("excel-preview-thead");
+const excelPreviewTbody = document.getElementById("excel-preview-tbody");
+const excelPreviewDownloadBtn = document.getElementById("excel-preview-download-btn");
 
 // Elemen Header, Menu Utama & Hub Scan to Excel
 const appHeaderTitle = document.getElementById("app-header-title");
@@ -69,10 +87,17 @@ const EXCEL_TASKS_STORAGE_KEY = "scan2qr_excel_tasks_v2";
 let activeAppFeature = "menu"; // "menu" | "1d-to-qr" | "scan-to-excel" | "text-to-qr"
 let currentRoute = "menu"; // "menu" | "1d-to-qr" | "text-to-qr" | "scan-to-excel-hub" | "scan-to-excel-new" | "scan-to-excel-scan"
 let isHandlingPopState = false;
+let ignoreNextSheetPopState = false;
+let isSheetHistoryPushed = false;
 let excelTasks = [];
 let activeExcelTaskId = null;
+let previewingExcelTaskId = null;
 let pendingScanData = null; // { text, format }
 let excelToastTimer = null;
+
+// State Notes Hasil Scan untuk 1D to QR
+let qrScanNotes = []; // [{ id, text, checked }]
+let qrNotesFeedbackTimer = null;
 
 let lastScanned = "";
 let deferredPrompt = null;
@@ -213,13 +238,29 @@ function pushAppHistoryState(routeName) {
   } catch (err) {}
 }
 
+function replaceAppHistoryState(routeName) {
+  currentRoute = routeName;
+  try {
+    window.history.replaceState({ appRoute: routeName }, "");
+  } catch (err) {}
+}
+
 try {
   window.history.replaceState({ appRoute: "menu" }, "");
 } catch (err) {}
 
 window.addEventListener("popstate", () => {
+  if (ignoreNextSheetPopState) {
+    ignoreNextSheetPopState = false;
+    return;
+  }
+
   isHandlingPopState = true;
   try {
+    if (excelPreviewModal && excelPreviewModal.classList.contains("open")) {
+      closeExcelTaskPreview(true);
+      return;
+    }
     if (fullscreenQrModal && fullscreenQrModal.classList.contains("open")) {
       resetScan(true);
       return;
@@ -233,7 +274,7 @@ window.addEventListener("popstate", () => {
       return;
     }
 
-    if (currentRoute === "scan-to-excel-scan") {
+    if (currentRoute === "scan-to-excel-scan" || activeAppFeature === "scan-to-excel" && activeExcelTaskId) {
       openExcelTaskHubView(true);
     } else if (currentRoute === "scan-to-excel-new") {
       openExcelTaskHubView(true);
@@ -250,10 +291,13 @@ window.addEventListener("popstate", () => {
 });
 
 function navigateBackOneStep() {
+  if (currentRoute === "scan-to-excel-scan" || currentRoute === "scan-to-excel-new") {
+    openExcelTaskHubView(true);
+    replaceAppHistoryState("scan-to-excel-hub");
+    return;
+  }
   if (window.history.length > 1 && currentRoute !== "menu") {
     window.history.back();
-  } else if (currentRoute === "scan-to-excel-new" || currentRoute === "scan-to-excel-scan") {
-    openExcelTaskHubView(true);
   } else {
     backToMainMenu(true);
   }
@@ -265,14 +309,17 @@ function hideAllMainSections() {
   if (excelNewTaskView) excelNewTaskView.style.display = "none";
   if (scannerCard) {
     scannerCard.style.display = "none";
-    scannerCard.classList.remove("excel-mode");
+    scannerCard.classList.remove("excel-mode", "notes-mode");
   }
+  if (qrScanNotesPanel) qrScanNotesPanel.style.display = "none";
   if (excelSessionPanel) excelSessionPanel.style.display = "none";
 }
 
 function resetTransientScannerUI() {
+  closeExcelPreviewModalOnly();
   closeFullscreenQrModal();
   closeScanSheetOnly();
+  isSheetHistoryPushed = false;
   ocrRunToken += 1;
   clearPhotoLensState();
   if (photoLensOverlay) photoLensOverlay.classList.remove("open");
@@ -311,6 +358,9 @@ function openFeatureMenu(feature) {
     if (galleryPhotoBtn) galleryPhotoBtn.style.display = "none";
     if (manualSubmitBtn) manualSubmitBtn.textContent = "Buat QR";
     if (lensCreateQrBtn) lensCreateQrBtn.textContent = "Buat Barkode";
+    if (scannerCard) scannerCard.classList.add("notes-mode");
+    if (qrScanNotesPanel) qrScanNotesPanel.style.display = "flex";
+    renderQrScanNotes();
     setScanMode(currentScanMode || "full");
     pushAppHistoryState("1d-to-qr");
   } else if (feature === "text-to-qr") {
@@ -454,12 +504,15 @@ function createAndStartExcelTask() {
 
   excelTasks.unshift(newTask);
   saveExcelTasksToStorage();
-  openExcelTaskScanner(newTask.id);
+  openExcelTaskScanner(newTask.id, true);
 }
 
-function openExcelTaskScanner(taskId) {
+function openExcelTaskScanner(taskId, replaceFromForm = false) {
   const task = excelTasks.find((t) => t.id === taskId);
   if (!task) return;
+
+  task.status = "running";
+  saveExcelTasksToStorage();
 
   activeAppFeature = "scan-to-excel";
   activeExcelTaskId = task.id;
@@ -486,27 +539,38 @@ function openExcelTaskScanner(taskId) {
 
   setScanMode(currentScanMode || "full");
   renderExcelSessionTable();
-  pushAppHistoryState("scan-to-excel-scan");
+
+  if (replaceFromForm) {
+    replaceAppHistoryState("scan-to-excel-scan");
+  } else {
+    pushAppHistoryState("scan-to-excel-scan");
+  }
+
   ensureCameraStarted();
 }
 
-function deleteExcelTaskById(taskId) {
+function endExcelTaskById(taskId) {
   excelTasks = excelTasks.filter((t) => t.id !== taskId);
   saveExcelTasksToStorage();
   renderExcelRunningTasksList();
 }
 
+function deleteExcelTaskById(taskId) {
+  endExcelTaskById(taskId);
+}
+
 function markCurrentExcelTaskCompleted() {
   const task = getActiveExcelTask();
   if (task) {
-    task.status = "completed";
+    task.status = "running";
     saveExcelTasksToStorage();
   }
-  navigateBackOneStep();
+  openExcelTaskHubView(true);
+  replaceAppHistoryState("scan-to-excel-hub");
 }
 
 function renderExcelRunningTasksList() {
-  const runningTasks = excelTasks.filter((t) => t.status !== "completed");
+  const runningTasks = excelTasks.filter((t) => t.status !== "ended");
   if (excelRunningCount) {
     excelRunningCount.textContent = `${runningTasks.length} task`;
   }
@@ -523,18 +587,91 @@ function renderExcelRunningTasksList() {
       const colNamesPreview = task.columns.join(", ");
       const nextColName = task.columns[task.activeColIndex] || task.columns[0] || "Kolom 1";
       const seqBadge = task.sequentialColumns ? ` • Urut: ${escapeHtmlSafe(nextColName)}` : "";
+      const hasRows = Array.isArray(task.rows) && task.rows.length > 0;
       return `<div class="excel-task-card">
         <div class="excel-task-card-info">
           <div class="excel-task-card-title">${escapeHtmlSafe(task.name)}</div>
           <div class="excel-task-card-meta">${task.columns.length} Kolom (${escapeHtmlSafe(colNamesPreview)}) • ${task.rows.length} baris${seqBadge}</div>
         </div>
         <div class="excel-task-card-actions">
-          <button type="button" class="excel-task-open-btn" onclick="openExcelTaskScanner('${escapeHtmlSafe(task.id)}')">Lanjut</button>
-          <button type="button" class="excel-task-del-btn" onclick="deleteExcelTaskById('${escapeHtmlSafe(task.id)}')">Hapus</button>
+          <button type="button" class="excel-task-open-btn" onclick="openExcelTaskScanner('${escapeHtmlSafe(task.id)}')">Lanjutkan</button>
+          <button type="button" class="excel-task-preview-btn" onclick="openExcelTaskPreview('${escapeHtmlSafe(task.id)}')">Preview</button>
+          <button type="button" class="excel-task-download-btn" onclick="exportExcelTaskById('${escapeHtmlSafe(task.id)}')" ${hasRows ? "" : "disabled"}>Download</button>
+          <button type="button" class="excel-task-del-btn" onclick="endExcelTaskById('${escapeHtmlSafe(task.id)}')">End Task</button>
         </div>
       </div>`;
     })
     .join("");
+}
+
+function openExcelTaskPreview(taskId) {
+  const task = excelTasks.find((t) => t.id === taskId);
+  if (!task || !excelPreviewModal) return;
+
+  previewingExcelTaskId = task.id;
+  if (excelPreviewTitle) {
+    excelPreviewTitle.textContent = task.name;
+  }
+  if (excelPreviewSubtitle) {
+    excelPreviewSubtitle.textContent = `${task.columns.length} Kolom • ${task.rows.length} baris`;
+  }
+  if (excelPreviewDownloadBtn) {
+    excelPreviewDownloadBtn.disabled = task.rows.length === 0;
+  }
+
+  if (excelPreviewThead) {
+    const thCols = task.columns.map((c) => `<th>${escapeHtmlSafe(c)}</th>`).join("");
+    excelPreviewThead.innerHTML = `<tr><th>No</th>${thCols}</tr>`;
+  }
+
+  if (excelPreviewTbody) {
+    if (!Array.isArray(task.rows) || task.rows.length === 0) {
+      excelPreviewTbody.innerHTML = `<tr><td colspan="${task.columns.length + 1}" style="text-align:center; color:#64748b; padding:24px 12px;">Belum ada data hasil scan pada task ini.</td></tr>`;
+    } else {
+      excelPreviewTbody.innerHTML = task.rows
+        .map((rowArr, idx) => {
+          const tds = task.columns
+            .map((_, cIdx) => {
+              const val = rowArr[cIdx] || "";
+              return `<td>${val ? escapeHtmlSafe(val) : '<span style="color:#94a3b8;">-</span>'}</td>`;
+            })
+            .join("");
+          return `<tr><td>${idx + 1}</td>${tds}</tr>`;
+        })
+        .join("");
+    }
+  }
+
+  const wasOpen = excelPreviewModal.classList.contains("open");
+  excelPreviewModal.classList.add("open");
+  excelPreviewModal.setAttribute("aria-hidden", "false");
+  if (!wasOpen) {
+    pushAppHistoryState("scan-to-excel-hub:preview");
+  }
+}
+
+function closeExcelPreviewModalOnly() {
+  previewingExcelTaskId = null;
+  if (excelPreviewModal) {
+    excelPreviewModal.classList.remove("open");
+    excelPreviewModal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function closeExcelTaskPreview(fromBack = false) {
+  if (!fromBack && excelPreviewModal && excelPreviewModal.classList.contains("open")) {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+  }
+  closeExcelPreviewModalOnly();
+  currentRoute = "scan-to-excel-hub";
+}
+
+function downloadPreviewedExcelTask() {
+  if (!previewingExcelTaskId) return;
+  exportExcelTaskById(previewingExcelTaskId);
 }
 
 async function backToMainMenu(fromBack = false) {
@@ -695,8 +832,10 @@ function openPhotoLensPanel() {
 
 function closePhotoLensPanel(fromBack = false) {
   if (!fromBack && photoLensOverlay && photoLensOverlay.classList.contains("open")) {
-    navigateBackOneStep();
-    return;
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
   }
   ocrRunToken += 1;
   clearPhotoLensState();
@@ -1668,6 +1807,7 @@ async function applyDetectedPhotoText(imageUrl) {
     setPhotoLensStatus("Gagal memproses foto, ketuk Foto Ulang", false);
   }
 }
+
 function getRenderedImageMetrics() {
   if (!photoLensStage || !ocrNaturalWidth || !ocrNaturalHeight) return null;
   const stageRect = photoLensStage.getBoundingClientRect();
@@ -2053,8 +2193,16 @@ function copyPhotoText() {
     return;
   }
   writeTextToClipboardSafe(targetVal);
+  if (activeAppFeature === "1d-to-qr") {
+    addQrScanNote(targetVal);
+  }
   resetScan(true);
-  statusBadge.textContent = "Teks Tersalin!";
+  if (activeAppFeature === "1d-to-qr") {
+    showQrNotesFeedback("Teks dari foto disalin!", false);
+  } else if (statusBadge) {
+    statusBadge.style.display = "inline-block";
+    statusBadge.textContent = "Teks Tersalin!";
+  }
 }
 
 function createBarcodeFromPhotoText() {
@@ -2117,6 +2265,123 @@ if (photoCaptureInput) {
 
 if (photoGalleryInput) {
   photoGalleryInput.addEventListener("change", handlePhotoFileSelected);
+}
+
+// 7B. Fitur Notes Hasil Scan dengan Checklist (Menu 1D to QR)
+function showQrNotesFeedback(msg, isWarning = false) {
+  if (!qrNotesFeedback) return;
+  qrNotesFeedback.textContent = msg;
+  qrNotesFeedback.classList.toggle("warn", Boolean(isWarning));
+  qrNotesFeedback.classList.add("visible");
+  if (qrNotesFeedbackTimer) {
+    clearTimeout(qrNotesFeedbackTimer);
+  }
+  qrNotesFeedbackTimer = setTimeout(() => {
+    qrNotesFeedback.classList.remove("visible");
+  }, 1800);
+}
+
+function addQrScanNote(rawText) {
+  const cleanText = String(rawText || "").trim();
+  if (!cleanText) return;
+  qrScanNotes.push({
+    id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    text: cleanText,
+    checked: false
+  });
+  renderQrScanNotes();
+}
+
+function toggleQrNoteChecked(noteId) {
+  const item = qrScanNotes.find((n) => n.id === noteId);
+  if (!item) return;
+  item.checked = !item.checked;
+  renderQrScanNotes();
+}
+
+function removeQrNoteById(noteId) {
+  qrScanNotes = qrScanNotes.filter((n) => n.id !== noteId);
+  renderQrScanNotes();
+}
+
+function clearAllQrNotes() {
+  if (qrScanNotes.length === 0) return;
+  qrScanNotes = [];
+  renderQrScanNotes();
+  showQrNotesFeedback("Semua notes hasil scan dihapus.", false);
+}
+
+function copyAllQrNotes() {
+  if (qrScanNotes.length === 0) return;
+  qrScanNotes.forEach((item) => {
+    item.checked = true;
+  });
+  renderQrScanNotes();
+  const payload = qrScanNotes.map((item) => item.text).join("\n");
+  writeTextToClipboardSafe(payload);
+  showQrNotesFeedback(`Semua (${qrScanNotes.length}) hasil scan dicentang & disalin!`, false);
+}
+
+function copySelectedQrNotes() {
+  if (qrScanNotes.length === 0) return;
+  const selectedItems = qrScanNotes.filter((item) => item.checked);
+  if (selectedItems.length === 0) {
+    showQrNotesFeedback("Centang minimal 1 kotak hasil scan terlebih dahulu.", true);
+    return;
+  }
+  const payload = selectedItems.map((item) => item.text).join("\n");
+  writeTextToClipboardSafe(payload);
+  showQrNotesFeedback(`${selectedItems.length} hasil scan pilihan disalin!`, false);
+}
+
+function renderQrScanNotes() {
+  const totalCount = qrScanNotes.length;
+  const checkedCount = qrScanNotes.filter((item) => item.checked).length;
+
+  if (qrNotesCount) {
+    qrNotesCount.textContent = `${totalCount} item`;
+  }
+  if (qrCopyAllBtn) {
+    qrCopyAllBtn.disabled = totalCount === 0;
+  }
+  if (qrCopySelectedBtn) {
+    qrCopySelectedBtn.disabled = checkedCount === 0;
+    qrCopySelectedBtn.textContent = checkedCount > 0 ? `Salin Pilihan (${checkedCount})` : "Salin Pilihan";
+  }
+  if (qrClearNotesBtn) {
+    qrClearNotesBtn.disabled = totalCount === 0;
+  }
+  if (!qrNotesList) return;
+
+  if (totalCount === 0) {
+    qrNotesList.innerHTML =
+      '<div class="qr-notes-empty">Belum ada hasil scan. Hasil scan akan muncul berurutan ke bawah di sini.</div>';
+    return;
+  }
+
+  qrNotesList.innerHTML = qrScanNotes
+    .map((item, index) => {
+      const safeId = escapeHtmlSafe(item.id);
+      const checkedAttr = item.checked ? "checked" : "";
+      const rowClass = item.checked ? "qr-note-item checked" : "qr-note-item";
+      return `<div class="${rowClass}">
+        <input
+          type="checkbox"
+          id="chk_${safeId}"
+          class="qr-note-checkbox"
+          ${checkedAttr}
+          onchange="toggleQrNoteChecked('${safeId}')"
+        />
+        <label for="chk_${safeId}" class="qr-note-label">
+          <span class="qr-note-num">${index + 1}.</span>
+          <span class="qr-note-text">${escapeHtmlSafe(item.text)}</span>
+        </label>
+        <button type="button" class="qr-note-del-btn" onclick="removeQrNoteById('${safeId}')" aria-label="Hapus item">✕</button>
+      </div>`;
+    })
+    .join("");
+
+  qrNotesList.scrollTop = qrNotesList.scrollHeight;
 }
 
 // 8. Fitur Scan to Excel (Multi-Kolom, Urutan Kolom Otomatis & Generator .xlsx Murni)
@@ -2369,9 +2634,8 @@ function buildStoredZipBlob(entries) {
   });
 }
 
-function exportScannedListToExcel() {
-  const task = getActiveExcelTask();
-  if (!task || task.rows.length === 0) return;
+function exportExcelTaskObject(task) {
+  if (!task || !Array.isArray(task.rows) || task.rows.length === 0) return;
 
   const sheetRows = [
     ["No", ...task.columns],
@@ -2469,6 +2733,18 @@ function exportScannedListToExcel() {
   setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
 
+function exportScannedListToExcel() {
+  const task = getActiveExcelTask();
+  if (!task || task.rows.length === 0) return;
+  exportExcelTaskObject(task);
+}
+
+function exportExcelTaskById(taskId) {
+  const task = excelTasks.find((t) => t.id === taskId);
+  if (!task || task.rows.length === 0) return;
+  exportExcelTaskObject(task);
+}
+
 function toggleAutoZoom() {
   isAutoZoomEnabled = !isAutoZoomEnabled;
   if (autoZoomBtn) {
@@ -2554,10 +2830,17 @@ function openScanSheet(cleanText, formatName) {
     if (sheetExcelColValue) {
       sheetExcelColValue.textContent = `${targetInfo.colName} (Baris #${targetInfo.rowNumber})`;
     }
-    statusBadge.textContent = "Siap Masuk Excel";
+    if (statusBadge) {
+      statusBadge.style.display = "inline-block";
+      statusBadge.textContent = "Siap Masuk Excel";
+    }
   } else {
     if (sheetExcelColRow) {
       sheetExcelColRow.style.display = "none";
+    }
+    if (statusBadge) {
+      statusBadge.style.display = "none";
+      statusBadge.textContent = "";
     }
   }
 
@@ -2570,6 +2853,7 @@ function openScanSheet(cleanText, formatName) {
     sheetBackdrop.classList.add("open");
   }
   if (!wasOpen) {
+    isSheetHistoryPushed = true;
     pushAppHistoryState(`${currentRoute}:sheet`);
   }
 }
@@ -2586,16 +2870,26 @@ function closeScanSheetOnly() {
 
 function dismissScanSheet(fromBack = false) {
   if (!fromBack && scanResultSheet && scanResultSheet.classList.contains("open")) {
-    navigateBackOneStep();
-    return;
+    if (isSheetHistoryPushed && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
   }
+  isSheetHistoryPushed = false;
   closeScanSheetOnly();
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
   resetCandidateScan();
-  statusBadge.textContent = "Scan Dibatalkan";
-  statusBadge.classList.remove("ready");
+  if (statusBadge) {
+    statusBadge.textContent = activeAppFeature === "scan-to-excel" ? "Scan Dibatalkan" : "";
+    statusBadge.classList.remove("ready");
+  }
+  if (activeAppFeature === "scan-to-excel") {
+    currentRoute = "scan-to-excel-scan";
+  } else if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
+    currentRoute = activeAppFeature;
+  }
   resumeCameraForNextScan();
 }
 
@@ -2611,9 +2905,15 @@ function completeScan() {
     pendingScanData = null;
     resetCandidateScan();
     currentRoute = "scan-to-excel-scan";
-    try {
-      window.history.replaceState({ appRoute: "scan-to-excel-scan" }, "");
-    } catch (err) {}
+    if (isSheetHistoryPushed && window.history.length > 1) {
+      isSheetHistoryPushed = false;
+      ignoreNextSheetPopState = true;
+      try {
+        window.history.back();
+      } catch (err) {
+        ignoreNextSheetPopState = false;
+      }
+    }
     resumeCameraForNextScan();
     return;
   }
@@ -2622,10 +2922,12 @@ function completeScan() {
   if (fullscreenQrModal) {
     fullscreenQrModal.classList.add("open");
     fullscreenQrModal.setAttribute("aria-hidden", "false");
-    currentRoute = `${activeAppFeature}:qr-modal`;
-    try {
-      window.history.replaceState({ appRoute: currentRoute }, "");
-    } catch (err) {}
+    const qrModalRoute = `${activeAppFeature}:qr-modal`;
+    if (isSheetHistoryPushed) {
+      replaceAppHistoryState(qrModalRoute);
+    } else {
+      pushAppHistoryState(qrModalRoute);
+    }
   }
 }
 
@@ -2706,8 +3008,27 @@ function generateQR(text, formatName = "Scan") {
 
   decodedTextEl.textContent = cleanText;
   formatInfoEl.textContent = `Format terbaca: ${formatName}`;
-  statusBadge.textContent = activeAppFeature === "scan-to-excel" ? "Siap Masuk Excel" : "Tersedia Disalin";
-  statusBadge.classList.add("ready");
+
+  if (activeAppFeature === "1d-to-qr") {
+    addQrScanNote(cleanText);
+    if (statusBadge) {
+      statusBadge.style.display = "none";
+      statusBadge.textContent = "";
+      statusBadge.classList.remove("ready");
+    }
+  } else if (activeAppFeature === "scan-to-excel") {
+    if (statusBadge) {
+      statusBadge.style.display = "inline-block";
+      statusBadge.textContent = "Siap Masuk Excel";
+      statusBadge.classList.add("ready");
+    }
+  } else {
+    if (statusBadge) {
+      statusBadge.style.display = "none";
+      statusBadge.textContent = "";
+      statusBadge.classList.remove("ready");
+    }
+  }
 
   if (activeAppFeature !== "scan-to-excel") {
     qrWrapper.innerHTML = "";
@@ -2789,14 +3110,21 @@ document.addEventListener("keydown", (e) => {
 function copyText() {
   if (!lastScanned) return;
   writeTextToClipboardSafe(lastScanned);
-  statusBadge.textContent = "Teks Tersalin!";
-  setTimeout(() => {
-    statusBadge.textContent = isScanLocked
-      ? activeAppFeature === "scan-to-excel"
-        ? "Siap Masuk Excel"
-        : "Tersedia Disalin"
-      : "QR Code Siap Scan";
-  }, 1500);
+
+  if (sheetCopyBtn) {
+    sheetCopyBtn.textContent = "Tersalin!";
+    setTimeout(() => {
+      sheetCopyBtn.textContent = "Salin Teks";
+    }, 1400);
+  }
+
+  if (activeAppFeature === "scan-to-excel" && statusBadge) {
+    statusBadge.style.display = "inline-block";
+    statusBadge.textContent = "Teks Tersalin!";
+    setTimeout(() => {
+      statusBadge.textContent = isScanLocked ? "Siap Masuk Excel" : "QR Code Siap Scan";
+    }, 1500);
+  }
 }
 
 function downloadQR() {
@@ -2813,9 +3141,12 @@ function downloadQR() {
 
 function resetScan(fromBack = false) {
   if (!fromBack && fullscreenQrModal && fullscreenQrModal.classList.contains("open")) {
-    navigateBackOneStep();
-    return;
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
   }
+  isSheetHistoryPushed = false;
   closeFullscreenQrModal();
   closeScanSheetOnly();
   ocrRunToken += 1;
@@ -2832,11 +3163,19 @@ function resetScan(fromBack = false) {
   resetCandidateScan();
   decodedTextEl.textContent = "-";
   formatInfoEl.textContent = "Format: -";
-  statusBadge.textContent = "Menunggu Scan...";
-  statusBadge.classList.remove("ready");
+  if (statusBadge) {
+    statusBadge.textContent = activeAppFeature === "scan-to-excel" ? "Menunggu Scan..." : "";
+    statusBadge.classList.remove("ready");
+    if (activeAppFeature !== "scan-to-excel") {
+      statusBadge.style.display = "none";
+    }
+  }
   qrWrapper.innerHTML =
     '<span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>';
   scannerInput.value = "";
+  if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
+    currentRoute = activeAppFeature;
+  }
   if (activeAppFeature !== "menu") {
     resumeCameraForNextScan();
   }

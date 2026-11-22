@@ -323,6 +323,25 @@
         <button id="manual-submit-btn" type="button" onclick="handleManualSubmit()">Buat QR</button>
       </div>
 
+      <!-- Panel Notes Hasil Scan (Muncul hanya saat menu 1D to QR aktif) -->
+      <section id="qr-scan-notes-panel" class="qr-notes-panel" style="display: none;" aria-live="polite">
+        <div class="qr-notes-header">
+          <div class="qr-notes-title-wrap">
+            <span class="qr-notes-title">Notes Hasil Scan</span>
+            <span id="qr-notes-count" class="qr-notes-badge">0 item</span>
+          </div>
+          <div class="qr-notes-actions">
+            <button type="button" id="qr-copy-all-btn" class="qr-notes-btn primary" onclick="copyAllQrNotes()" disabled>Salin Semua</button>
+            <button type="button" id="qr-copy-selected-btn" class="qr-notes-btn secondary-blue" onclick="copySelectedQrNotes()" disabled>Salin Pilihan</button>
+            <button type="button" id="qr-clear-notes-btn" class="qr-notes-btn danger" onclick="clearAllQrNotes()" disabled title="Hapus semua notes">Hapus</button>
+          </div>
+        </div>
+        <div id="qr-notes-feedback" class="qr-notes-feedback" aria-live="polite"></div>
+        <div id="qr-notes-list" class="qr-notes-list">
+          <div class="qr-notes-empty">Belum ada hasil scan. Hasil scan akan muncul berurutan ke bawah di sini.</div>
+        </div>
+      </section>
+
       <!-- Panel Sesi Scan to Excel (Muncul hanya saat menu Scan to Excel aktif) -->
       <section id="excel-session-panel" class="excel-session-panel" style="display: none;" aria-live="polite">
         <div class="excel-panel-header">
@@ -389,7 +408,7 @@
       </div>
       <div class="sheet-detail-row sheet-copy-row">
         <button type="button" id="sheet-copy-btn" class="sheet-copy-btn" onclick="copyText()">Salin Teks</button>
-        <span id="status-badge" class="badge">Menunggu Scan...</span>
+        <span id="status-badge" class="badge" style="display: none;">Menunggu Scan...</span>
       </div>
     </div>
   </section>
@@ -415,6 +434,31 @@
       <button type="button" class="secondary" onclick="copyText()">Salin Teks</button>
       <button type="button" class="secondary" onclick="downloadQR()">Simpan QR</button>
       <button type="button" onclick="resetScan()">Scan Baru</button>
+    </div>
+  </section>
+
+  <!-- Modal Preview Excel Hasil Scan -->
+  <section id="excel-preview-modal" class="excel-preview-modal" aria-hidden="true">
+    <div class="excel-preview-header">
+      <div class="excel-preview-title-group">
+        <h2 id="excel-preview-title">Preview Excel</h2>
+        <div id="excel-preview-subtitle" class="excel-preview-subtitle">0 Kolom • 0 baris</div>
+      </div>
+      <button type="button" class="close-fullscreen-btn" onclick="closeExcelTaskPreview()" aria-label="Tutup Preview">✕</button>
+    </div>
+
+    <div class="excel-preview-body">
+      <div class="excel-preview-table-wrap">
+        <table class="excel-preview-table">
+          <thead id="excel-preview-thead"></thead>
+          <tbody id="excel-preview-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="excel-preview-actions">
+      <button type="button" class="secondary" onclick="closeExcelTaskPreview()">Tutup</button>
+      <button type="button" id="excel-preview-download-btn" class="excel-preview-dl-btn" onclick="downloadPreviewedExcelTask()">Download Excel</button>
     </div>
   </section>
 

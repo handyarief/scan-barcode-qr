@@ -286,8 +286,7 @@ header {
 
 .excel-task-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 10px;
   padding: 12px;
   border-radius: 12px;
@@ -296,7 +295,7 @@ header {
 }
 
 .excel-task-card-info {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -304,7 +303,7 @@ header {
 }
 
 .excel-task-card-title {
-  font-size: 0.92rem;
+  font-size: 0.94rem;
   font-weight: 700;
   color: var(--text);
   white-space: nowrap;
@@ -319,34 +318,195 @@ header {
 }
 
 .excel-task-card-actions {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
-  flex-shrink: 0;
+  width: 100%;
 }
 
 .excel-task-open-btn {
   background: #16a34a;
   color: #ffffff;
-  padding: 8px 12px;
-  font-size: 0.8rem;
+  padding: 8px 6px;
+  font-size: 0.75rem;
   border-radius: 8px;
+  text-align: center;
 }
 
 .excel-task-open-btn:hover:not(:disabled) {
   background: #15803d;
 }
 
+.excel-task-preview-btn {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  padding: 8px 6px;
+  font-size: 0.75rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.excel-task-preview-btn:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.excel-task-download-btn {
+  background: #0f62fe;
+  color: #ffffff;
+  padding: 8px 6px;
+  font-size: 0.75rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.excel-task-download-btn:hover:not(:disabled) {
+  background: #0353e9;
+}
+
+.excel-task-download-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .excel-task-del-btn {
   background: #fee2e2;
   color: #dc2626;
-  padding: 8px 10px;
-  font-size: 0.78rem;
+  padding: 8px 6px;
+  font-size: 0.75rem;
   border-radius: 8px;
+  text-align: center;
 }
 
 .excel-task-del-btn:hover:not(:disabled) {
   background: #fecaca;
+}
+
+/* Modal Preview Excel Hasil Scan */
+.excel-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.excel-preview-modal.open {
+  transform: translateY(0);
+}
+
+.excel-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.excel-preview-title-group {
+  min-width: 0;
+  flex: 1;
+}
+
+.excel-preview-title-group h2 {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.excel-preview-subtitle {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.excel-preview-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.excel-preview-table-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.excel-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.excel-preview-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #15803d;
+  color: #ffffff;
+  font-weight: 700;
+  padding: 9px 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid #166534;
+  white-space: nowrap;
+}
+
+.excel-preview-table th:last-child {
+  border-right: none;
+}
+
+.excel-preview-table td {
+  padding: 8px 10px;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.excel-preview-table td:last-child {
+  border-right: none;
+}
+
+.excel-preview-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+.excel-preview-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.excel-preview-dl-btn {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.excel-preview-dl-btn:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.excel-preview-dl-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Form New Excel */
@@ -593,6 +753,12 @@ header {
 .scanner-card.excel-mode #reader,
 .scanner-card.excel-mode #reader video {
   min-height: 300px;
+}
+
+.scanner-card.notes-mode .scanner-viewport,
+.scanner-card.notes-mode #reader,
+.scanner-card.notes-mode #reader video {
+  min-height: 330px;
 }
 
 /* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
@@ -1161,6 +1327,193 @@ header {
 
 .manual-input input:focus {
   border-color: var(--primary);
+}
+
+/* Panel Notes Hasil Scan (Menu 1D to QR) */
+.qr-notes-panel {
+  background: #ffffff;
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.qr-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qr-notes-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qr-notes-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.qr-notes-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.qr-notes-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.qr-notes-btn {
+  padding: 6px 9px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.qr-notes-btn.primary {
+  background: #0f62fe;
+  color: #ffffff;
+}
+
+.qr-notes-btn.primary:hover:not(:disabled) {
+  background: #0353e9;
+}
+
+.qr-notes-btn.secondary-blue {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.qr-notes-btn.secondary-blue:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.qr-notes-btn.danger {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.qr-notes-btn.danger:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.qr-notes-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.qr-notes-feedback {
+  display: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #15803d;
+  background: #dcfce7;
+  padding: 5px 10px;
+  border-radius: 7px;
+}
+
+.qr-notes-feedback.visible {
+  display: block;
+}
+
+.qr-notes-feedback.warn {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.qr-notes-list {
+  max-height: 170px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+.qr-notes-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 16px 12px;
+}
+
+.qr-note-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.qr-note-item:last-child {
+  border-bottom: none;
+}
+
+.qr-note-item.checked {
+  background: #eff6ff;
+}
+
+.qr-note-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #0f62fe;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.qr-note-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
+.qr-note-num {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.qr-note-text {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.qr-note-del-btn {
+  background: transparent;
+  color: #94a3b8;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.qr-note-del-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 /* Panel Sesi Scan to Excel */
