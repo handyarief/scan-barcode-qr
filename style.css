@@ -961,7 +961,7 @@ header {
   transform: translateX(-50%) translateY(0);
 }
 
-/* Overlay Foto Ala Google Lens: Foto Penuh + Blok Biru Transparan + Menu Kapsul Mengambang */
+/* Overlay Foto Ala Google Lens: Foto Hasil Auto-Crop + Blok Biru Transparan + Menu Kapsul Mengambang */
 .photo-lens-overlay {
   display: none;
   position: absolute;
@@ -1049,6 +1049,7 @@ header {
   object-fit: contain;
   pointer-events: none;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .captured-photo-preview.has-image {
@@ -1064,42 +1065,47 @@ header {
   touch-action: none;
 }
 
-/* Kotak Angka / Huruf di Atas Foto (Presisi Rapat & Bersih Ala Google Lens) */
+/* Kotak Angka / Huruf di Atas Kertas Putih Bersih (Presisi Rapat & Tajam) */
 .ocr-word-box {
   position: absolute;
   border-radius: 4px;
-  background: rgba(56, 189, 248, 0.14);
-  border: 1.25px solid rgba(56, 189, 248, 0.72);
+  background: rgba(15, 98, 254, 0.05);
+  border: 1px dashed rgba(15, 98, 254, 0.42);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-word-box:hover {
-  background: rgba(59, 130, 246, 0.24);
-  border-color: rgba(96, 165, 250, 0.92);
+  background: rgba(15, 98, 254, 0.12);
+  border-color: rgba(15, 98, 254, 0.78);
 }
 
 /* Kotak Area Barcode Terpisah di Atas Foto */
 .ocr-barcode-box {
   position: absolute;
   border-radius: 5px;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1.25px solid rgba(56, 189, 248, 0.72);
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px dashed rgba(16, 185, 129, 0.52);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-barcode-box:hover {
-  background: rgba(59, 130, 246, 0.24);
-  border-color: rgba(96, 165, 250, 0.92);
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.85);
 }
 
 .ocr-word-box.selected,
 .ocr-barcode-box.selected {
-  background: rgba(37, 99, 235, 0.36);
-  border: 1.5px solid #60a5fa;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.32);
+  background: rgba(15, 98, 254, 0.18);
+  border: 1.5px solid #0f62fe;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
   z-index: 2;
+}
+
+.ocr-barcode-box.selected {
+  background: rgba(2, 132, 199, 0.16);
+  border-color: #0284c7;
 }
 
 /* Penanda Tetesan Biru Ala Google Lens di Ujung Blok Terpilih */
