@@ -1,0 +1,256 @@
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+
+.scanner-card {
+  padding: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  background: #0f172a;
+  border-color: #0f172a;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.scanner-viewport {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0f172a;
+  min-height: 520px;
+  cursor: pointer;
+}
+
+#reader {
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+}
+
+#reader video {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 520px;
+  object-fit: cover !important;
+  display: block;
+}
+
+.scanner-card.excel-mode .scanner-viewport,
+.scanner-card.excel-mode #reader,
+.scanner-card.excel-mode #reader video {
+  min-height: 300px;
+}
+
+.scanner-card.notes-mode .scanner-viewport,
+.scanner-card.notes-mode #reader,
+.scanner-card.notes-mode #reader video {
+  min-height: 330px;
+}
+
+/* Canvas Auto-Detect Tepi Dokumen Ala CamScanner */
+.doc-detect-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+  display: none;
+}
+
+.doc-detect-canvas.active {
+  display: block;
+}
+
+/* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
+#reader img[alt="Info icon"],
+#reader__dashboard_section,
+#qr-shaded-region {
+  display: none !important;
+}
+
+/* Mode Scan di Atas: Full, Square, Bar */
+.scan-top-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  padding: 18px 16px 24px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+  pointer-events: auto;
+}
+
+.scan-mode-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 16px;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.mode-tab {
+  position: relative;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 6px 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-radius: 0;
+}
+
+.mode-tab:hover:not(:disabled) {
+  background: transparent;
+  color: #ffffff;
+}
+
+.mode-tab.active {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.mode-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: #ffffff;
+}
+
+.scan-instruction {
+  display: none;
+}
+
+/* Panduan Area Scan per Mode: bagian dalam selalu clear/transparan, bagian luar agak gelap */
+.scan-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 3;
+  background: transparent;
+  transition: width 0.22s ease, height 0.22s ease, border-radius 0.22s ease, box-shadow 0.22s ease;
+}
+
+.guide-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: rgba(255, 255, 255, 0.92);
+  border-style: solid;
+  border-width: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.corner-tl {
+  top: -2px;
+  left: -2px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 4px;
+}
+
+.corner-tr {
+  top: -2px;
+  right: -2px;
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 4px;
+}
+
+.corner-bl {
+  bottom: -2px;
+  left: -2px;
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 4px;
+}
+
+.corner-br {
+  bottom: -2px;
+  right: -2px;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 4px;
+}
+
+.scanner-viewport.mode-full .scan-guide {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.scanner-viewport.mode-square .scan-guide {
+  width: 248px;
+  height: 248px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+}
+
+.scanner-viewport.mode-square .guide-corner {
+  opacity: 1;
+}
+
+.scanner-viewport.mode-bar .scan-guide {
+  width: calc(100% - 36px);
+  height: 104px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+}
+
+.scanner-viewport.mode-bar .guide-corner {
+  opacity: 1;
+}
+
+.scan-laser,
+.auto-zoom-badge {
+  display: none;
+}
+
+/* Toast Cepat Saat Scan Masuk ke Excel */
+.excel-scan-toast {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  z-index: 9;
+  background: rgba(22, 163, 74, 0.94);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.excel-scan-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

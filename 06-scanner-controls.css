@@ -1,0 +1,135 @@
+/* Bar Bawah: Ikon Kontrol Kamera */
+.scan-bottom-controls {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 18px;
+  pointer-events: none;
+}
+
+.icon-circle-btn {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(55, 65, 81, 0.72);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.icon-circle-btn:hover:not(:disabled) {
+  background: rgba(31, 41, 55, 0.88);
+}
+
+.icon-circle-btn.active {
+  background: var(--flash-active);
+  color: #161616;
+}
+
+#keyboard-toggle-btn.active,
+#zoom-toggle-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.icon-circle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Tombol Foto Bulat */
+.photo-shutter-circle-btn {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(55, 65, 81, 0.72);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-shutter-circle-btn:hover:not(:disabled) {
+  background: rgba(31, 41, 55, 0.88);
+}
+
+.photo-shutter-circle-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.zoom-control {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.zoom-control.open {
+  display: flex;
+}
+
+.zoom-control input[type="range"] {
+  flex: 1;
+  accent-color: var(--primary);
+}
+
+.mini-pill-btn {
+  padding: 5px 10px;
+  font-size: 0.74rem;
+  border-radius: 99px;
+  background: #d0d7de;
+  color: #161616;
+}
+
+.mini-pill-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+#flash-status {
+  display: none;
+}
+
+.manual-input {
+  display: none;
+  gap: 8px;
+  margin: 10px 12px 12px;
+}
+
+.manual-input.open {
+  display: flex;
+}
+
+.manual-input input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  background: #ffffff;
+}
+
+.manual-input input:focus {
+  border-color: var(--primary);
+}

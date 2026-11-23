@@ -1,0 +1,257 @@
+/* Bottom Sheet Hasil Scan */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.24s ease;
+}
+
+.sheet-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scan-result-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
+  max-width: 480px;
+  background: #ffffff;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  padding: 4px 18px 22px;
+  z-index: 25;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.14);
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  touch-action: none;
+}
+
+.scan-result-sheet.open {
+  transform: translateY(0);
+}
+
+.scan-result-sheet.dragging {
+  transition: none;
+}
+
+.sheet-drag-area {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 2px;
+  margin-bottom: 4px;
+}
+
+.sheet-arrow-btn {
+  background: transparent;
+  color: #9ca3af;
+  padding: 2px 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sheet-arrow-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.sheet-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sheet-count-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.completed-btn {
+  background: #2563eb;
+  color: #ffffff;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.completed-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.sheet-detail-card {
+  position: relative;
+  padding-top: 4px;
+}
+
+.sheet-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 6px 0;
+  font-size: 0.9rem;
+}
+
+.sheet-copy-row {
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+}
+
+.sheet-copy-btn {
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.sheet-copy-btn:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.sheet-label {
+  min-width: 78px;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.sheet-value {
+  flex: 1;
+  color: #2563eb;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.badge.ready {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+/* Tampilan Kode QR Kotak Full Screen (Muncul dari bawah setelah klik Completed) */
+.fullscreen-qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fullscreen-qr-modal.open {
+  transform: translateY(0);
+}
+
+.fullscreen-qr-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fullscreen-qr-header h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+#format-info {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.close-fullscreen-btn {
+  background: #f1f5f9;
+  color: var(--text);
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-fullscreen-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.fullscreen-qr-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 12px 0;
+}
+
+.fullscreen-qr-box {
+  width: min(78vw, 320px);
+  height: min(78vw, 320px);
+  padding: 18px;
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-qr-box img,
+.fullscreen-qr-box canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+}
+
+#decoded-text {
+  width: 100%;
+  max-width: 420px;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: center;
+  word-break: break-all;
+  padding: 10px 14px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
