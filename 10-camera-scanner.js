@@ -1,114 +1,64 @@
-// 10. Kontrol Kamera, Mode Scan (Full/Square/Bar), Zoom, Focus, Flash & Dual-Engine Scanner
-let html5QrCode = null;
-let nativeBarcodeDetectorInstance = null;
-
-function getSupportedFormats() {
-  if (typeof Html5QrcodeSupportedFormats === "undefined") return undefined;
-  return [
-    Html5QrcodeSupportedFormats.QR_CODE,
-    Html5QrcodeSupportedFormats.AZTEC,
-    Html5QrcodeSupportedFormats.CODABAR,
-    Html5QrcodeSupportedFormats.CODE_39,
-    Html5QrcodeSupportedFormats.CODE_93,
-    Html5QrcodeSupportedFormats.CODE_128,
-    Html5QrcodeSupportedFormats.DATA_MATRIX,
-    Html5QrcodeSupportedFormats.MAXICODE,
-    Html5QrcodeSupportedFormats.ITF,
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.PDF_417,
-    Html5QrcodeSupportedFormats.RSS_14,
-    Html5QrcodeSupportedFormats.RSS_EXPANDED,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-    Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION
-  ].filter((f) => f !== undefined);
-}
-
-function getScanQrboxConfig(viewfinderWidth, viewfinderHeight) {
-  const w = Math.max(120, viewfinderWidth || 300);
-  const h = Math.max(120, viewfinderHeight || 300);
-
-  if (currentScanMode === "square") {
-    const size = Math.min(248, Math.floor(Math.min(w, h) * 0.78));
-    return { width: size, height: size };
-  }
-  if (currentScanMode === "bar") {
-    const boxW = Math.max(180, Math.floor(w - 36));
-    const boxH = Math.min(116, Math.max(84, Math.floor(h * 0.28)));
-    return { width: boxW, height: boxH };
-  }
-  return {
-    width: Math.max(160, Math.floor(w * 0.94)),
-    height: Math.max(160, Math.floor(h * 0.94))
-  };
-}
-
+// Pengaturan Mode Scan (Full, Square, Bar)
 function setScanMode(mode) {
-  if (!["full", "square", "bar"].includes(mode)) return;
+  const validModes = ["full", "square", "bar"];
+  if (!validModes.includes(mode)) return;
   currentScanMode = mode;
+  resetCandidateScan();
 
   if (scannerViewport) {
     scannerViewport.classList.remove("mode-full", "mode-square", "mode-bar");
     scannerViewport.classList.add(`mode-${mode}`);
   }
 
-  ["full", "square", "bar"].forEach((m) => {
-    const tab = document.getElementById(`mode-${m}`);
-    if (tab) {
-      tab.classList.toggle("active", m === mode);
-    }
+  const tabs = document.querySelectorAll(".mode-tab");
+  tabs.forEach((tab) => {
+    tab.classList.toggle("active", tab.getAttribute("data-mode") === mode);
   });
 
-  resetCandidateScan();
+  if (scanInstruction) {
+    scanInstruction.textContent = "";
+  }
+
+  triggerAutoFocus(true);
 }
 
-function getActiveVideoTrack() {
-  const videoEl = document.querySelector("#reader video");
-  if (!videoEl || !videoEl.srcObject) return null;
-  const tracks = videoEl.srcObject.getVideoTracks();
-  return tracks && tracks.length > 0 ? tracks[0] : null;
+function toggleZoomPanel() {
+  if (!zoomBox || !zoomToggleBtn) return;
+  const isOpen = zoomBox.classList.toggle("open");
+  zoomToggleBtn.classList.toggle("active", isOpen);
 }
 
-async function applyCameraZoomValue(val) {
-  const track = getActiveVideoTrack();
-  if (!track || !isZoomSupported) return;
-  const clamped = Math.max(minZoomSupported, Math.min(maxZoomSupported, Number(val) || 1));
-  currentZoom = clamped;
+function toggleKeyboardPanel() {
+  if (!manualPanel || !keyboardToggleBtn) return;
+  const isOpen = manualPanel.classList.toggle("open");
+  keyboardToggleBtn.classList.toggle("active", isOpen);
+  if (isOpen && scannerInput) {
+    scannerInput.focus();
+  }
+}
 
-  if (zoomSlider) zoomSlider.value = String(clamped);
-  if (zoomValue) zoomValue.textContent = `${clamped.toFixed(1)}x`;
+function resetCandidateScan() {
+  scanCandidateHistory.clear();
+}
 
+function pauseCameraForSingleScan() {
+  if (!isCameraRunning) return;
   try {
-    await track.applyConstraints({ advanced: [{ zoom: clamped }] });
+    if (typeof html5QrCode.pause === "function") {
+      html5QrCode.pause(true);
+    }
   } catch (err) {}
 }
 
-function startAutoZoomCycle() {
-  stopAutoZoomCycle();
-  if (!isAutoZoomEnabled || !isZoomSupported) return;
-  autoZoomDirection = 1;
-  autoZoomTimer = setInterval(() => {
-    if (!isCameraRunning || isScanLocked || !isAutoZoomEnabled) return;
-    const upperCap = Math.min(maxZoomSupported, 3.0);
-    const step = 0.2;
-    let nextZoom = currentZoom + step * autoZoomDirection;
-    if (nextZoom >= upperCap) {
-      nextZoom = upperCap;
-      autoZoomDirection = -1;
-    } else if (nextZoom <= minZoomSupported) {
-      nextZoom = minZoomSupported;
-      autoZoomDirection = 1;
+function resumeCameraForNextScan() {
+  if (!isCameraRunning) return;
+  resetCandidateScan();
+  try {
+    if (typeof html5QrCode.resume === "function") {
+      html5QrCode.resume();
     }
-    applyCameraZoomValue(nextZoom);
-  }, 650);
-}
-
-function stopAutoZoomCycle() {
-  if (autoZoomTimer) {
-    clearInterval(autoZoomTimer);
-    autoZoomTimer = null;
-  }
+    triggerAutoFocus(false);
+  } catch (err) {}
 }
 
 function toggleAutoZoom() {
@@ -116,400 +66,502 @@ function toggleAutoZoom() {
   if (autoZoomBtn) {
     autoZoomBtn.classList.toggle("active", isAutoZoomEnabled);
   }
-  if (isAutoZoomEnabled) {
-    startAutoZoomCycle();
-  } else {
-    stopAutoZoomCycle();
-  }
+  updateAutoZoomBadge();
 }
 
-function toggleZoomPanel() {
-  if (!zoomBox || !zoomToggleBtn) return;
-  const willOpen = !zoomBox.classList.contains("open");
-  zoomBox.classList.toggle("open", willOpen);
-  zoomToggleBtn.classList.toggle("active", willOpen);
-
-  if (willOpen && manualPanel && manualPanel.classList.contains("open")) {
-    manualPanel.classList.remove("open");
-    if (keyboardToggleBtn) keyboardToggleBtn.classList.remove("active");
-  }
+function updateAutoZoomBadge() {
+  if (!autoZoomBadge) return;
+  autoZoomBadge.textContent = isAutoZoomEnabled
+    ? `Auto Zoom: ${currentZoom.toFixed(1)}x`
+    : `Manual Zoom: ${currentZoom.toFixed(1)}x`;
 }
 
-function toggleKeyboardPanel() {
-  if (!manualPanel || !keyboardToggleBtn) return;
-  const willOpen = !manualPanel.classList.contains("open");
-  manualPanel.classList.toggle("open", willOpen);
-  keyboardToggleBtn.classList.toggle("active", willOpen);
+async function applyCameraZoomValue(val) {
+  const clamped = Math.max(minZoomSupported, Math.min(maxZoomSupported, Number(val)));
+  currentZoom = clamped;
 
-  if (willOpen) {
-    if (zoomBox && zoomBox.classList.contains("open")) {
-      zoomBox.classList.remove("open");
-      if (zoomToggleBtn) zoomToggleBtn.classList.remove("active");
-    }
-    if (scannerInput) {
-      setTimeout(() => scannerInput.focus(), 60);
-    }
+  if (zoomSlider) {
+    zoomSlider.value = clamped;
   }
-}
+  if (zoomValue) {
+    zoomValue.textContent = `${clamped.toFixed(1)}x`;
+  }
+  updateAutoZoomBadge();
 
-async function triggerAutoFocus(manualTap = false) {
-  const track = getActiveVideoTrack();
-  if (!track || !isFocusSupported) return;
+  if (!isCameraRunning || !isZoomSupported) return;
   try {
-    if (manualTap) {
-      await track.applyConstraints({ advanced: [{ focusMode: "single-shot" }] });
-      setTimeout(() => {
-        track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
-      }, 450);
-    } else {
-      await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+    const advancedConstraint = { zoom: clamped };
+    if (isFocusSupported) {
+      advancedConstraint.focusMode = "continuous";
     }
+    await html5QrCode.applyVideoConstraints({
+      advanced: [advancedConstraint]
+    });
   } catch (err) {}
 }
 
-function startContinuousAutoFocus() {
-  stopContinuousAutoFocus();
+function startAutoZoomCycle() {
+  if (autoZoomTimer) {
+    clearInterval(autoZoomTimer);
+  }
+  autoZoomTimer = setInterval(() => {
+    if (!isAutoZoomEnabled || !isCameraRunning || isScanLocked || document.visibilityState !== "visible") {
+      return;
+    }
+    const targetMax = Math.min(maxZoomSupported, Math.max(minZoomSupported + 0.4, 2.0));
+    const step = 0.2;
+    let nextZoom = currentZoom + step * autoZoomDirection;
+
+    if (nextZoom >= targetMax) {
+      nextZoom = targetMax;
+      autoZoomDirection = -1;
+    } else if (nextZoom <= minZoomSupported) {
+      nextZoom = minZoomSupported;
+      autoZoomDirection = 1;
+    }
+
+    applyCameraZoomValue(Number(nextZoom.toFixed(1)));
+  }, 3600);
+}
+
+// 10. Inisialisasi Kamera Scanner Dual-Engine (ZXing 1D/2D + Native BarcodeDetector Resolusi Penuh)
+function getSupportedFormats() {
+  const f = typeof Html5QrcodeSupportedFormats !== "undefined" ? Html5QrcodeSupportedFormats : {};
+  const list = [
+    f.QR_CODE,
+    f.AZTEC,
+    f.CODABAR,
+    f.CODE_39,
+    f.CODE_93,
+    f.CODE_128,
+    f.DATA_MATRIX,
+    f.MAXICODE,
+    f.ITF,
+    f.EAN_13,
+    f.EAN_8,
+    f.PDF_417,
+    f.RSS_14,
+    f.RSS_EXPANDED,
+    f.UPC_A,
+    f.UPC_E,
+    f.UPC_EAN_EXTENSION
+  ];
+  return list.filter((item) => item !== undefined);
+}
+
+const html5QrCode = new Html5Qrcode("reader", {
+  formatsToSupport: getSupportedFormats(),
+  experimentalFeatures: {
+    useBarCodeDetectorIfSupported: false
+  },
+  verbose: false
+});
+
+function calculateDynamicQrBox(viewfinderWidth, viewfinderHeight) {
+  if (currentScanMode === "square") {
+    const size = Math.floor(Math.max(180, Math.min(viewfinderWidth - 36, viewfinderHeight - 120, 248)));
+    return { width: size, height: size };
+  }
+
+  if (currentScanMode === "bar") {
+    const width = Math.floor(Math.max(220, Math.min(viewfinderWidth - 36, 404)));
+    const height = Math.floor(Math.max(96, Math.min(104, viewfinderHeight * 0.22)));
+    return { width, height };
+  }
+
+  return {
+    width: Math.floor(Math.max(220, viewfinderWidth * 0.92)),
+    height: Math.floor(Math.max(220, Math.min(viewfinderHeight * 0.68, viewfinderWidth * 1.15)))
+  };
+}
+
+const config = {
+  fps: 24,
+  disableFlip: false,
+  qrbox: calculateDynamicQrBox
+};
+
+async function applyFocusConstraint(mode = "continuous") {
+  if (!isCameraRunning) return false;
+  try {
+    await html5QrCode.applyVideoConstraints({
+      advanced: [{ focusMode: mode }]
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function triggerAutoFocus(showIndicator = true) {
+  if (!isCameraRunning || isScanLocked) return;
+
+  if (showIndicator && scannerViewport) {
+    scannerViewport.classList.add("refocusing");
+    setTimeout(() => {
+      scannerViewport.classList.remove("refocusing");
+    }, 260);
+  }
+
+  try {
+    const capabilities = html5QrCode.getRunningTrackCapabilities();
+    const supportedModes = Array.isArray(capabilities?.focusMode) ? capabilities.focusMode : [];
+
+    if (supportedModes.includes("single-shot")) {
+      await applyFocusConstraint("single-shot");
+      if (supportedModes.includes("continuous")) {
+        setTimeout(() => {
+          applyFocusConstraint("continuous").catch(() => {});
+        }, 220);
+      }
+      return;
+    }
+
+    if (supportedModes.includes("continuous")) {
+      await applyFocusConstraint("continuous");
+      return;
+    }
+
+    await applyFocusConstraint("continuous");
+  } catch (err) {}
+}
+
+function startAutoFocusLoop() {
+  if (autoFocusTimer) {
+    clearInterval(autoFocusTimer);
+  }
   autoFocusTimer = setInterval(() => {
     if (isCameraRunning && !isScanLocked && document.visibilityState === "visible") {
       triggerAutoFocus(false);
     }
-  }, 2400);
+  }, 4500);
 }
 
-function stopContinuousAutoFocus() {
-  if (autoFocusTimer) {
-    clearInterval(autoFocusTimer);
-    autoFocusTimer = null;
+if (scannerViewport) {
+  scannerViewport.addEventListener("click", (e) => {
+    if (
+      e.target.closest(".scan-top-overlay") ||
+      e.target.closest(".scan-bottom-controls") ||
+      e.target.closest("#scan-guide") ||
+      e.target.closest("#photo-lens-overlay")
+    ) {
+      return;
+    }
+    triggerAutoFocus(true);
+  });
+}
+
+async function upgradeCameraResolutionIfSupported() {
+  if (!isCameraRunning) return;
+  try {
+    await html5QrCode.applyVideoConstraints({
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    });
+  } catch (err) {}
+}
+
+function setupCameraCapabilities() {
+  upgradeCameraResolutionIfSupported();
+
+  try {
+    const capabilities = html5QrCode.getRunningTrackCapabilities();
+
+    if (capabilities && Array.isArray(capabilities.focusMode) && capabilities.focusMode.length > 0) {
+      isFocusSupported = true;
+      triggerAutoFocus(false);
+      startAutoFocusLoop();
+    } else {
+      isFocusSupported = false;
+      triggerAutoFocus(false);
+      startAutoFocusLoop();
+    }
+
+    if (capabilities && capabilities.torch) {
+      isFlashSupported = true;
+      flashBtn.disabled = false;
+      flashStatus.textContent = isFocusSupported
+        ? "Auto fokus aktif • Flash tersedia — ketuk ikon lampu untuk menyalakan."
+        : "Flash tersedia — ketuk ikon lampu untuk menyalakan.";
+    } else {
+      isFlashSupported = false;
+      flashBtn.disabled = true;
+      flashStatus.textContent = isFocusSupported
+        ? "Auto fokus aktif • Flash tidak didukung di perangkat ini."
+        : "Flash tidak didukung di kamera/browser ini.";
+    }
+
+    if (capabilities && capabilities.zoom) {
+      isZoomSupported = true;
+      minZoomSupported = capabilities.zoom.min || 1;
+      maxZoomSupported = Math.min(capabilities.zoom.max || 4, 5);
+      const stepZoom = capabilities.zoom.step || 0.1;
+
+      zoomSlider.min = minZoomSupported;
+      zoomSlider.max = maxZoomSupported;
+      zoomSlider.step = stepZoom;
+      zoomSlider.value = minZoomSupported;
+      currentZoom = Number(minZoomSupported);
+      zoomValue.textContent = `${currentZoom.toFixed(1)}x`;
+      if (autoZoomBtn) {
+        autoZoomBtn.classList.toggle("active", isAutoZoomEnabled);
+      }
+      updateAutoZoomBadge();
+
+      if (!isZoomSliderBound) {
+        isZoomSliderBound = true;
+        zoomSlider.addEventListener("input", async (e) => {
+          isAutoZoomEnabled = false;
+          if (autoZoomBtn) {
+            autoZoomBtn.classList.remove("active");
+          }
+          await applyCameraZoomValue(parseFloat(e.target.value));
+        });
+      }
+
+      startAutoZoomCycle();
+    } else {
+      isZoomSupported = false;
+      updateAutoZoomBadge();
+    }
+  } catch (err) {
+    isFlashSupported = false;
+    flashBtn.disabled = true;
+    flashStatus.textContent = "Status flash tidak dapat dideteksi.";
   }
 }
 
 async function toggleFlash() {
-  const track = getActiveVideoTrack();
-  if (!track || !isFlashSupported) return;
+  if (!isCameraRunning || !isFlashSupported) return;
+
   const nextState = !isFlashOn;
   try {
-    await track.applyConstraints({ advanced: [{ torch: nextState }] });
+    const advancedConstraint = { torch: nextState };
+    if (isFocusSupported) {
+      advancedConstraint.focusMode = "continuous";
+    }
+    await html5QrCode.applyVideoConstraints({
+      advanced: [advancedConstraint]
+    });
     isFlashOn = nextState;
-    if (flashBtn) flashBtn.classList.toggle("active", isFlashOn);
-    if (flashStatus) flashStatus.textContent = isFlashOn ? "Flash ON" : "Flash OFF";
-  } catch (err) {}
+    flashBtn.classList.toggle("active", isFlashOn);
+    flashStatus.textContent = isFlashOn
+      ? "Cahaya flash aktif untuk menerangi barcode."
+      : "Cahaya flash dimatikan.";
+    triggerAutoFocus(false);
+  } catch (err) {
+    flashStatus.textContent = "Gagal mengubah status flash di perangkat ini.";
+  }
 }
 
-function inspectCameraCapabilities() {
-  const track = getActiveVideoTrack();
-  isFlashSupported = false;
-  isZoomSupported = false;
-  isFocusSupported = false;
+function getRequiredConfirmHits(fmt, cleanText) {
+  if (cleanText.length <= 3) {
+    return 2;
+  }
+  return 1;
+}
 
-  if (!track || typeof track.getCapabilities !== "function") {
-    if (flashBtn) flashBtn.disabled = true;
+function onScanSuccess(decodedText, decodedResult) {
+  if (
+    activeAppFeature === "menu" ||
+    isTextPhotoCameraActive() ||
+    currentRoute === "scan-to-excel-hub" ||
+    currentRoute === "scan-to-excel-new"
+  ) {
     return;
   }
+  if (isScanLocked) return;
 
-  try {
-    const caps = track.getCapabilities();
-    if (caps.torch) {
-      isFlashSupported = true;
-      if (flashBtn) flashBtn.disabled = false;
-    } else if (flashBtn) {
-      flashBtn.disabled = true;
-    }
+  const cleanText = String(decodedText || "").trim();
+  if (cleanText.length < 3) return;
 
-    if (caps.zoom && typeof caps.zoom.min === "number" && typeof caps.zoom.max === "number") {
-      isZoomSupported = true;
-      minZoomSupported = caps.zoom.min;
-      maxZoomSupported = Math.min(8, caps.zoom.max);
-      currentZoom = Math.max(minZoomSupported, Math.min(maxZoomSupported, 1));
-
-      if (zoomSlider) {
-        zoomSlider.min = String(minZoomSupported);
-        zoomSlider.max = String(maxZoomSupported);
-        zoomSlider.step = String(caps.zoom.step || 0.1);
-        zoomSlider.value = String(currentZoom);
-        if (!isZoomSliderBound) {
-          isZoomSliderBound = true;
-          zoomSlider.addEventListener("input", (e) => {
-            if (isAutoZoomEnabled) {
-              isAutoZoomEnabled = false;
-              if (autoZoomBtn) autoZoomBtn.classList.remove("active");
-              stopAutoZoomCycle();
-            }
-            applyCameraZoomValue(e.target.value);
-          });
-        }
-      }
-      if (zoomValue) zoomValue.textContent = `${currentZoom.toFixed(1)}x`;
-    }
-
-    if (Array.isArray(caps.focusMode) && caps.focusMode.length > 0) {
-      isFocusSupported = true;
-      triggerAutoFocus(false);
-    }
-  } catch (err) {}
-}
-
-function resetCandidateScan() {
-  scanCandidateHistory.clear();
-}
-
-function confirmConsistentScanCandidate(text) {
+  const fmt = decodedResult?.result?.format?.formatName || "Terdeteksi";
   const now = Date.now();
+
   for (const [key, entry] of scanCandidateHistory.entries()) {
-    if (now - entry.lastTime > 900) {
+    if (now > entry.expiresAt) {
       scanCandidateHistory.delete(key);
     }
   }
 
-  const existing = scanCandidateHistory.get(text);
-  if (!existing) {
-    scanCandidateHistory.set(text, { count: 1, lastTime: now });
-    return false;
-  }
+  const candidateKey = `${fmt}::${cleanText}`;
+  const existing = scanCandidateHistory.get(candidateKey);
+  const nextHits = existing ? existing.hits + 1 : 1;
+  scanCandidateHistory.set(candidateKey, {
+    hits: nextHits,
+    expiresAt: now + 1400
+  });
 
-  existing.count += 1;
-  existing.lastTime = now;
-  return existing.count >= 2;
+  const requiredHits = getRequiredConfirmHits(fmt, cleanText);
+  if (nextHits >= requiredHits) {
+    generateQR(cleanText, fmt);
+  }
 }
 
-function onScanSuccess(decodedText, decodedResult) {
-  if (activeAppFeature === "menu") return;
-  if (isTextPhotoCameraActive()) return;
-  if (isScanLocked) return;
-
-  const cleanText = String(decodedText || "").trim();
-  if (!cleanText) return;
-
-  const rawFormat =
-    decodedResult &&
-    decodedResult.result &&
-    decodedResult.result.format &&
-    decodedResult.result.format.formatName
-      ? decodedResult.result.format.formatName
-      : "";
-
-  const isHardwareScan = rawFormat === "HW_SCANNER";
-  if (!isHardwareScan && !confirmConsistentScanCandidate(cleanText)) {
-    return;
+function buildLiveCropCanvasFromVideo() {
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return null;
   }
 
-  resetCandidateScan();
-  isScanLocked = true;
-  lastScanned = cleanText;
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  const vpRect = scannerViewport ? scannerViewport.getBoundingClientRect() : null;
+  const cw = vpRect && vpRect.width ? vpRect.width : vw;
+  const ch = vpRect && vpRect.height ? vpRect.height : vh;
 
-  const formattedType = detectScanFormatType(cleanText, rawFormat);
-  triggerScanFeedback();
-  pauseCameraForSingleScan();
-  openScanSheet(cleanText, formattedType);
-}
+  const coverScale = Math.max(cw / vw, ch / vh);
+  const visibleW = Math.min(vw, cw / coverScale);
+  const visibleH = Math.min(vh, ch / coverScale);
 
-function isBoundingBoxInsideActiveScanMode(bbox, frameW, frameH) {
-  if (!bbox || !frameW || !frameH || currentScanMode === "full") return true;
-
-  const cx = (bbox.x + bbox.width / 2) / frameW;
-  const cy = (bbox.y + bbox.height / 2) / frameH;
+  let cropW = visibleW;
+  let cropH = visibleH;
 
   if (currentScanMode === "square") {
-    return cx >= 0.14 && cx <= 0.86 && cy >= 0.22 && cy <= 0.78;
-  }
-  if (currentScanMode === "bar") {
-    return cx >= 0.06 && cx <= 0.94 && cy >= 0.34 && cy <= 0.66;
-  }
-  return true;
-}
-
-function startNativeLiveFrameScanner() {
-  stopNativeLiveFrameScanner();
-  if (typeof window.BarcodeDetector === "undefined") return;
-
-  if (!nativeBarcodeDetectorInstance) {
-    try {
-      nativeBarcodeDetectorInstance = new window.BarcodeDetector({
-        formats: [
-          "code_128",
-          "code_39",
-          "code_93",
-          "codabar",
-          "ean_13",
-          "ean_8",
-          "itf",
-          "upc_a",
-          "upc_e",
-          "qr_code",
-          "data_matrix",
-          "aztec",
-          "pdf417"
-        ]
-      });
-    } catch (err) {
-      try {
-        nativeBarcodeDetectorInstance = new window.BarcodeDetector();
-      } catch (e) {
-        return;
-      }
-    }
+    const guidePx = 248;
+    cropW = Math.min(vw, (guidePx / coverScale) * 1.08);
+    cropH = Math.min(vh, (guidePx / coverScale) * 1.08);
+  } else if (currentScanMode === "bar") {
+    const guideW = Math.max(220, cw - 36);
+    const guideH = 104;
+    cropW = Math.min(vw, (guideW / coverScale) * 1.08);
+    cropH = Math.min(vh, (guideH / coverScale) * 1.15);
   }
 
-  nativeLiveScanTimer = setInterval(async () => {
-    if (
-      isNativeLiveScanBusy ||
-      !isCameraRunning ||
-      isScanLocked ||
-      activeAppFeature === "menu" ||
-      isTextPhotoCameraActive() ||
-      document.visibilityState !== "visible"
-    ) {
-      return;
-    }
+  const sx = Math.max(0, Math.floor((vw - cropW) / 2));
+  const sy = Math.max(0, Math.floor((vh - cropH) / 2));
+  const sw = Math.max(16, Math.min(vw - sx, Math.ceil(cropW)));
+  const sh = Math.max(16, Math.min(vh - sy, Math.ceil(cropH)));
 
-    const videoEl = document.querySelector("#reader video");
-    if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
-      return;
-    }
+  const quietPad = 24;
+  const canvas = document.createElement("canvas");
+  canvas.width = sw + quietPad * 2;
+  canvas.height = sh + quietPad * 2;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
 
-    isNativeLiveScanBusy = true;
-    try {
-      const results = await nativeBarcodeDetectorInstance.detect(videoEl);
-      if (Array.isArray(results) && results.length > 0 && !isScanLocked) {
-        const match = results.find(
-          (item) =>
-            item &&
-            item.rawValue &&
-            isBoundingBoxInsideActiveScanMode(item.boundingBox, videoEl.videoWidth, videoEl.videoHeight)
-        );
-        if (match && match.rawValue) {
-          onScanSuccess(String(match.rawValue).trim(), {
-            result: {
-              format: {
-                formatName: String(match.format || "").toUpperCase()
-              }
-            }
-          });
-        }
-      }
-    } catch (err) {
-    } finally {
-      isNativeLiveScanBusy = false;
-    }
-  }, 160);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(videoEl, sx, sy, sw, sh, quietPad, quietPad, sw, sh);
+  return canvas;
 }
 
-function stopNativeLiveFrameScanner() {
-  if (nativeLiveScanTimer) {
-    clearInterval(nativeLiveScanTimer);
-    nativeLiveScanTimer = null;
-  }
-  isNativeLiveScanBusy = false;
-}
-
-function pauseCameraForSingleScan() {
-  stopNativeLiveFrameScanner();
-  stopAutoZoomCycle();
-  try {
-    if (html5QrCode && isCameraRunning && typeof html5QrCode.pause === "function") {
-      html5QrCode.pause(true);
-    }
-  } catch (err) {}
-}
-
-function resumeCameraForNextScan() {
-  if (activeAppFeature === "menu") return;
-  if (!isCameraRunning) {
-    ensureCameraStarted();
+async function runNativeLiveFrameScan() {
+  if (
+    isNativeLiveScanBusy ||
+    !isCameraRunning ||
+    isScanLocked ||
+    activeAppFeature === "menu" ||
+    isTextPhotoCameraActive() ||
+    currentRoute === "scan-to-excel-hub" ||
+    currentRoute === "scan-to-excel-new" ||
+    document.visibilityState !== "visible" ||
+    (photoLensOverlay && photoLensOverlay.classList.contains("open"))
+  ) {
     return;
   }
-  try {
-    if (html5QrCode && typeof html5QrCode.resume === "function") {
-      html5QrCode.resume();
-    }
-  } catch (err) {}
 
-  if (isTextPhotoCameraActive()) {
-    startDocumentBoundaryDetector();
-  } else {
-    startNativeLiveFrameScanner();
-    if (isAutoZoomEnabled) startAutoZoomCycle();
+  isNativeLiveScanBusy = true;
+  try {
+    const cropCanvas = buildLiveCropCanvasFromVideo();
+    if (!cropCanvas) return;
+
+    const detected = await detectBarcodeBoxesWithNativeDetector(cropCanvas);
+    if (!detected || detected.length === 0 || isScanLocked) return;
+
+    const validItems = detected.filter((item) => item.text && item.text.length >= 3);
+    if (validItems.length === 0) return;
+
+    const midX = cropCanvas.width / 2;
+    const midY = cropCanvas.height / 2;
+    validItems.sort((a, b) => {
+      const distA = Math.hypot((a.bbox.x0 + a.bbox.x1) / 2 - midX, (a.bbox.y0 + a.bbox.y1) / 2 - midY);
+      const distB = Math.hypot((b.bbox.x0 + b.bbox.x1) / 2 - midX, (b.bbox.y0 + b.bbox.y1) / 2 - midY);
+      return distA - distB;
+    });
+
+    const best = validItems[0];
+    onScanSuccess(best.text, {
+      result: {
+        format: {
+          formatName: best.format || detectScanFormatType(best.text, "Terdeteksi")
+        }
+      }
+    });
+  } catch (err) {
+  } finally {
+    isNativeLiveScanBusy = false;
   }
 }
 
-async function ensureCameraStarted() {
-  if (isCameraRunning || isCameraStarting || activeAppFeature === "menu") return;
-  if (typeof Html5Qrcode === "undefined") return;
+function startNativeLiveScanner() {
+  if (typeof window.BarcodeDetector === "undefined") return;
+  if (nativeLiveScanTimer) {
+    clearInterval(nativeLiveScanTimer);
+  }
+  nativeLiveScanTimer = setInterval(runNativeLiveFrameScan, 160);
+}
+
+function ensureCameraStarted() {
+  if (isCameraRunning) {
+    resumeCameraForNextScan();
+    return;
+  }
+  if (isCameraStarting) return;
 
   isCameraStarting = true;
-  try {
-    if (!html5QrCode) {
-      html5QrCode = new Html5Qrcode("reader", {
-        formatsToSupport: getSupportedFormats(),
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
-        },
-        verbose: false
-      });
-    }
-
-    const config = {
-      fps: 15,
-      qrbox: getScanQrboxConfig,
-      aspectRatio: 1.0,
-      disableFlip: false
-    };
-
-    await html5QrCode.start(
+  html5QrCode
+    .start(
       { facingMode: "environment" },
       config,
       onScanSuccess,
       () => {}
-    );
-
-    isCameraRunning = true;
-    inspectCameraCapabilities();
-    startContinuousAutoFocus();
-
-    if (isTextPhotoCameraActive()) {
-      startDocumentBoundaryDetector();
-    } else {
-      startNativeLiveFrameScanner();
-      if (isAutoZoomEnabled) startAutoZoomCycle();
-    }
-  } catch (err) {
-    isCameraRunning = false;
-  } finally {
-    isCameraStarting = false;
-  }
+    )
+    .then(() => {
+      isCameraStarting = false;
+      isCameraRunning = true;
+      startNativeLiveScanner();
+      setTimeout(setupCameraCapabilities, 350);
+    })
+    .catch(() => {
+      isCameraStarting = false;
+      isCameraRunning = false;
+      flashBtn.disabled = true;
+      flashStatus.textContent = "Kamera tidak aktif.";
+      const readerEl = document.getElementById("reader");
+      if (readerEl) {
+        readerEl.innerHTML =
+          `<div style="color:#fff; padding:24px; text-align:center; font-size:0.9rem;">
+            Kamera tidak aktif atau membutuhkan akses HTTPS.<br/>Gunakan tombol foto atau ikon keyboard di bawah.
+          </div>`;
+      }
+    });
 }
 
 async function stopCameraGracefully() {
   stopDocumentBoundaryDetector();
-  stopNativeLiveFrameScanner();
-  stopContinuousAutoFocus();
-  stopAutoZoomCycle();
-
-  if (isFlashOn) {
-    isFlashOn = false;
-    if (flashBtn) flashBtn.classList.remove("active");
+  if (nativeLiveScanTimer) {
+    clearInterval(nativeLiveScanTimer);
+    nativeLiveScanTimer = null;
+  }
+  if (autoFocusTimer) {
+    clearInterval(autoFocusTimer);
+    autoFocusTimer = null;
+  }
+  if (autoZoomTimer) {
+    clearInterval(autoZoomTimer);
+    autoZoomTimer = null;
   }
 
-  if (html5QrCode && isCameraRunning) {
-    try {
-      await html5QrCode.stop();
-    } catch (err) {}
+  isFlashOn = false;
+  if (flashBtn) {
+    flashBtn.classList.remove("active");
+    flashBtn.disabled = true;
   }
+
+  if (!isCameraRunning) return;
+  try {
+    await html5QrCode.stop();
+  } catch (err) {}
   isCameraRunning = false;
-  isCameraStarting = false;
 }
-
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") {
-    stopDocumentBoundaryDetector();
-    stopNativeLiveFrameScanner();
-    stopAutoZoomCycle();
-  } else if (document.visibilityState === "visible" && activeAppFeature !== "menu" && !isScanLocked) {
-    if (photoLensOverlay && photoLensOverlay.classList.contains("open")) return;
-    if (isTextPhotoCameraActive()) {
-      startDocumentBoundaryDetector();
-    } else {
-      startNativeLiveFrameScanner();
-      if (isAutoZoomEnabled) startAutoZoomCycle();
-    }
-  }
-});

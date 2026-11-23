@@ -1517,7 +1517,6 @@ function createBarcodeFromPhotoText() {
 
   const resolvedFormat = detectedFormat || detectScanFormatType(targetVal, "OCR Text");
   generateQR(targetVal, resolvedFormat);
-  completeScan();
 }
 
 function handlePhotoFileSelected(e) {
