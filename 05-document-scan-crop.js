@@ -1,4 +1,4 @@
-// 6B. Engine Auto-Detect, Auto-Scan & Auto-Crop Dokumen Presisi Ala CamScanner ("Ajaib Pro")
+// 6B. Engine Auto-Detect, Auto-Crop & Penjernihan Dokumen Presisi Ala CamScanner ("Ajaib Pro")
 function orderQuadCorners(pts) {
   if (!Array.isArray(pts) || pts.length !== 4) return null;
   const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
@@ -244,7 +244,6 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
     const lum = new Uint8Array(totalPixels);
     const sat = new Uint8Array(totalPixels);
 
-    // Hitung statistik tepi/latar luar bingkai untuk deteksi kontras kertas relatif terhadap background
     let borderLumSum = 0;
     let borderCount = 0;
 
@@ -269,7 +268,6 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
 
     const avgBorderLum = borderCount > 0 ? borderLumSum / borderCount : 115;
 
-    // Hitung rata-rata kecerahan lokal 21x21 menggunakan integral image agar bayangan miring tetap terdeteksi sebagai kertas
     const integral = new Float64Array((srcW + 1) * (srcH + 1));
     for (let y = 1; y <= srcH; y += 1) {
       let rowSum = 0;
@@ -312,7 +310,6 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
       }
     }
 
-    // Dilasi dulu untuk menyatukan celah antar label & isi barcode/QR di dalam tumpukan dokumen, lalu erosi untuk merapikan sisi luar
     const bufA = new Uint8Array(totalPixels);
     const bufB = new Uint8Array(totalPixels);
     dilateBinaryMask(rawMask, bufA, srcW, srcH);
@@ -510,10 +507,10 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
       return null;
     }
 
-    // Inset ringan (0.978) agar tepi bergerigi/bayangan latar luar kertas terpotong bersih seperti CamScanner
+    // Inset ringan (0.972) agar tepi bayangan latar luar kertas terpotong bersih seperti hasil auto-crop
     const qCx = (refined[0].x + refined[1].x + refined[2].x + refined[3].x) / 4;
     const qCy = (refined[0].y + refined[1].y + refined[2].y + refined[3].y) / 4;
-    const insetFactor = 0.978;
+    const insetFactor = 0.972;
 
     const normQuad = refined.map((pt) => {
       const ix = qCx + (pt.x - qCx) * insetFactor;
@@ -595,7 +592,7 @@ function drawDocumentBoundaryOverlay(quad) {
   ctx.clearRect(0, 0, cw, ch);
 
   if (!quad || quad.length !== 4) {
-    updateDocAutoScanPill("Arahkan kamera ke dokumen...", false, true);
+    updateDocAutoScanPill("Arahkan kamera ke layar/dokumen...", false, true);
     return;
   }
 
@@ -620,7 +617,7 @@ function drawDocumentBoundaryOverlay(quad) {
     y: offsetY + p.y * drawH
   }));
 
-  const isLocked = docStableHits >= 3 || docAutoScanTriggered;
+  const isLocked = docStableHits >= 3;
 
   ctx.save();
   drawRoundedQuadPath(ctx, pts, 14 * dpr);
@@ -633,7 +630,6 @@ function drawDocumentBoundaryOverlay(quad) {
   ctx.lineJoin = "round";
   ctx.stroke();
 
-  // Aksen sudut menonjol ala bingkai auto-detect CamScanner
   pts.forEach((pt, idx) => {
     const prev = pts[(idx + 3) % 4];
     const next = pts[(idx + 1) % 4];
@@ -658,7 +654,7 @@ function drawDocumentBoundaryOverlay(quad) {
   ctx.restore();
 
   updateDocAutoScanPill(
-    isLocked ? "Dokumen terkunci — memotret otomatis..." : "Dokumen terdeteksi — tahan sebentar",
+    isLocked ? "Fokus terkunci & siap — tekan tombol foto" : "Auto-deteksi & fokus layar...",
     isLocked,
     true
   );
@@ -673,6 +669,7 @@ function measureQuadDisplacement(quadA, quadB) {
   return sumDist / 4;
 }
 
+// Auto-deteksi & trigger autofokus layar secara live; tidak memotret otomatis sebelum tombol foto ditekan
 function updateDocumentAutoScanStability(quad) {
   if (!quad || docAutoScanTriggered) return;
 
@@ -689,18 +686,12 @@ function updateDocumentAutoScanStability(quad) {
       x: p.x * 0.55 + docLastStableQuad[idx].x * 0.45,
       y: p.y * 0.55 + docLastStableQuad[idx].y * 0.45
     }));
+    if (docStableHits === 3 && typeof triggerAutoFocus === "function") {
+      triggerAutoFocus(false);
+    }
   } else {
     docLastStableQuad = quad.map((p) => ({ ...p }));
     docStableHits = 1;
-  }
-
-  // Trigger auto-capture otomatis saat dokumen stabil sekitar ~0.55 detik (6 frame @ 90ms)
-  if (docStableHits >= 6) {
-    docAutoScanTriggered = true;
-    docStableHits = 0;
-    lastDetectedDocQuad = docLastStableQuad.map((p) => ({ ...p }));
-    triggerScanFeedback();
-    triggerPhotoCapture();
   }
 }
 
@@ -723,7 +714,7 @@ function runDocumentBoundaryFrame() {
 
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
-  const maxSample = 280;
+  const maxSample = 320;
   const scale = Math.min(1, maxSample / Math.max(vw, vh));
   const sw = Math.max(40, Math.round(vw * scale));
   const sh = Math.max(40, Math.round(vh * scale));
@@ -777,7 +768,7 @@ function startDocumentBoundaryDetector() {
   if (docDetectCanvas) {
     docDetectCanvas.classList.add("active");
   }
-  updateDocAutoScanPill("Arahkan kamera ke dokumen...", false, true);
+  updateDocAutoScanPill("Arahkan kamera ke layar/dokumen...", false, true);
   docDetectTimer = setInterval(runDocumentBoundaryFrame, 90);
 }
 
@@ -878,7 +869,7 @@ function warpDocumentQuadToCanvas(img, normQuad) {
   let targetW = Math.max(160, Math.round((topW + botW) / 2));
   let targetH = Math.max(160, Math.round((leftH + rightH) / 2));
 
-  const maxOutDim = 2048;
+  const maxOutDim = 2200;
   if (Math.max(targetW, targetH) > maxOutDim) {
     const scale = maxOutDim / Math.max(targetW, targetH);
     targetW = Math.round(targetW * scale);
@@ -1061,6 +1052,7 @@ function separableBoxBlurFloat(src, w, h, radius) {
   return dst;
 }
 
+// Filter dokumen putih bersih & teks/barcode tajam seperti hasil auto-crop CamScanner
 function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
   const ctx = canvas.getContext("2d");
   if (!ctx || !canvas.width || !canvas.height) return;
@@ -1071,37 +1063,13 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
     const imgData = ctx.getImageData(0, 0, w, h);
     const data = imgData.data;
     const total = w * h;
-    const rawLum = new Uint8Array(total);
+    const lum = new Uint8Array(total);
 
     for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-      rawLum[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      lum[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     }
 
-    // Smoothing ringan 3x3 untuk meredam butiran kamera tanpa mengaburkan detail huruf/barcode
-    const lum = new Uint8Array(total);
-    lum.set(rawLum);
-    for (let y = 1; y < h - 1; y += 1) {
-      const rOff = y * w;
-      for (let x = 1; x < w - 1; x += 1) {
-        const p = rOff + x;
-        const avg =
-          (rawLum[p - w - 1] +
-            2 * rawLum[p - w] +
-            rawLum[p - w + 1] +
-            2 * rawLum[p - 1] +
-            4 * rawLum[p] +
-            2 * rawLum[p + 1] +
-            rawLum[p + w - 1] +
-            2 * rawLum[p + w] +
-            rawLum[p + w + 1]) >>
-          4;
-        if (Math.abs(rawLum[p] - avg) < 22) {
-          lum[p] = avg;
-        }
-      }
-    }
-
-    // Estimasi latar belakang lokal menggunakan morphological closing + blur halus agar bayangan & lipatan kertas memutih merata
+    // Estimasi pencahayaan latar belakang lokal secara halus agar latar kertas memutih merata tanpa meleburkan karakter tipis
     const hw = Math.max(24, Math.ceil(w / 2));
     const hh = Math.max(24, Math.ceil(h / 2));
     const halfLum = new Uint8Array(hw * hh);
@@ -1115,18 +1083,18 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
       }
     }
 
-    const dilateRadius = Math.max(12, Math.round(Math.min(hw, hh) / 24));
-    const erodeRadius = Math.max(6, Math.round(dilateRadius * 0.5));
-    const blurRadius = Math.max(10, Math.round(dilateRadius * 0.8));
+    const dilateRadius = Math.max(10, Math.round(Math.min(hw, hh) / 28));
+    const erodeRadius = Math.max(4, Math.round(dilateRadius * 0.45));
+    const blurRadius = Math.max(10, Math.round(dilateRadius * 0.85));
 
     const dilated = separableMorphOp1D(halfLum, hw, hh, dilateRadius, true);
     const closed = separableMorphOp1D(dilated, hw, hh, erodeRadius, false);
     const smoothBg = separableBoxBlurFloat(closed, hw, hh, blurRadius);
 
-    // Normalisasi latar belakang putih bersih (#FFFFFF) + tinta hitam pekat (#000000) persis "Ajaib Pro" di Gambar 4 & video
+    // Kurva pemutihan latar & penggelapan tinta yang seimbang agar huruf kecil & garis barcode tetap presisi
     const toneBuf = new Uint8Array(total);
-    const blackPt = 0.70;
-    const whitePt = 0.93;
+    const blackPt = 0.58;
+    const whitePt = 0.88;
     const invRange = 1 / (whitePt - blackPt);
 
     for (let y = 0; y < h; y += 1) {
@@ -1149,7 +1117,7 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
         const b01 = smoothBg[hy1 * hw + hx0];
         const b11 = smoothBg[hy1 * hw + hx1];
         const localBg = Math.max(
-          70,
+          75,
           (b00 * oneMinusWx + b10 * wx) * oneMinusWy + (b01 * oneMinusWx + b11 * wx) * wy
         );
 
@@ -1163,13 +1131,13 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
           outGray = 0;
         } else {
           const t = (ratio - blackPt) * invRange;
-          outGray = Math.round(255 * Math.pow(t, 1.45));
+          outGray = Math.round(255 * Math.pow(t, 1.18));
         }
         toneBuf[p] = outGray;
       }
     }
 
-    // Penajaman tinta halus agar garis barcode, QR & huruf kecil (S/N, P/N, DESC, QTY) tajam hitam pekat
+    // Unsharp mask halus menjaga ketajaman tepi huruf/angka kecil & garis barcode
     const sharpBuf = new Uint8Array(toneBuf);
     for (let y = 1; y < h - 1; y += 1) {
       const rOff = y * w;
@@ -1177,7 +1145,7 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
       const yNext = rOff + w;
       for (let x = 1; x < w - 1; x += 1) {
         const center = toneBuf[rOff + x];
-        if (center > 0 && center < 252) {
+        if (center > 8 && center < 250) {
           const blur =
             (toneBuf[yPrev + x - 1] +
               2 * toneBuf[yPrev + x] +
@@ -1189,21 +1157,21 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
               2 * toneBuf[yNext + x] +
               toneBuf[yNext + x + 1]) >>
             4;
-          const sharpened = center + 0.35 * (center - blur);
+          const sharpened = center + 0.48 * (center - blur);
           sharpBuf[rOff + x] =
-            sharpened >= 246 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
+            sharpened >= 248 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
         }
       }
     }
 
     if (wasCropped) {
-      const pad = Math.max(3, Math.round(Math.min(w, h) * 0.008));
+      const pad = Math.max(3, Math.round(Math.min(w, h) * 0.006));
       for (let y = 0; y < h; y += 1) {
         const rOff = y * w;
         const nearY = y < pad || y >= h - pad;
         for (let x = 0; x < w; x += 1) {
           if (nearY || x < pad || x >= w - pad) {
-            if (sharpBuf[rOff + x] > 160) {
+            if (sharpBuf[rOff + x] > 150) {
               sharpBuf[rOff + x] = 255;
             }
           }
@@ -1230,7 +1198,7 @@ async function processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad = 
 
   let quadToUse = preDetectedQuad;
   if (!quadToUse) {
-    const maxSample = 320;
+    const maxSample = 360;
     const scale = Math.min(1, maxSample / Math.max(naturalW, naturalH));
     const sw = Math.max(40, Math.round(naturalW * scale));
     const sh = Math.max(40, Math.round(naturalH * scale));
@@ -1254,7 +1222,7 @@ async function processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad = 
   }
 
   if (!outputCanvas) {
-    const maxOutDim = 2048;
+    const maxOutDim = 2200;
     const scale =
       Math.max(naturalW, naturalH) > maxOutDim
         ? maxOutDim / Math.max(naturalW, naturalH)
@@ -1269,5 +1237,5 @@ async function processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad = 
   }
 
   applyCamScannerDocumentFilter(outputCanvas, wasCropped);
-  return outputCanvas.toDataURL("image/jpeg", 0.97);
+  return outputCanvas.toDataURL("image/jpeg", 0.98);
 }

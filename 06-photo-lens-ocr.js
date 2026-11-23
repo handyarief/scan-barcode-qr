@@ -1,4 +1,4 @@
-// 7. Engine Foto Lens: Auto-Crop CamScanner + Deteksi Barcode & Huruf/Angka Cepat
+// 7. Engine Foto Lens: Auto-Crop CamScanner + Deteksi Barcode/QR & Huruf/Angka Akurat
 function setPhotoLensStatus(msg, hide = false) {
   if (!photoLensStatus) return;
   photoLensStatus.textContent = msg;
@@ -119,7 +119,7 @@ function captureSnapshotFromVideo() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return "";
     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.96);
+    return canvas.toDataURL("image/jpeg", 0.98);
   } catch (err) {
     return "";
   }
@@ -172,12 +172,12 @@ async function getPersistentOcrWorker() {
 }
 
 function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
-  const minHorizRun = Math.max(70, Math.floor(width * 0.26));
+  const minHorizRun = Math.max(85, Math.floor(width * 0.3));
   for (let y = 1; y < height - 1; y += 1) {
     const rowOffset = y * width;
     let runStart = -1;
     for (let x = 0; x <= width; x += 1) {
-      const isDark = x < width && grayBuf[rowOffset + x] < 155;
+      const isDark = x < width && grayBuf[rowOffset + x] < 145;
       if (isDark) {
         if (runStart < 0) runStart = x;
       } else if (runStart >= 0) {
@@ -186,9 +186,9 @@ function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
           for (let rx = runStart; rx < x; rx += 1) {
             const aboveVal = grayBuf[(y - 1) * width + rx];
             const belowVal = grayBuf[(y + 1) * width + rx];
-            const isTouchingChar = aboveVal < 130 && belowVal < 130;
+            const isTouchingChar = aboveVal < 120 && belowVal < 120;
             if (!isTouchingChar) {
-              grayBuf[rowOffset + rx] = 250;
+              grayBuf[rowOffset + rx] = 252;
             }
           }
         }
@@ -197,11 +197,11 @@ function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
     }
   }
 
-  const minVertRun = Math.max(80, Math.floor(height * 0.26));
+  const minVertRun = Math.max(95, Math.floor(height * 0.3));
   for (let x = 1; x < width - 1; x += 1) {
     let runStart = -1;
     for (let y = 0; y <= height; y += 1) {
-      const isDark = y < height && grayBuf[y * width + x] < 155;
+      const isDark = y < height && grayBuf[y * width + x] < 145;
       if (isDark) {
         if (runStart < 0) runStart = y;
       } else if (runStart >= 0) {
@@ -210,9 +210,9 @@ function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
           for (let ry = runStart; ry < y; ry += 1) {
             const leftVal = grayBuf[ry * width + (x - 1)];
             const rightVal = grayBuf[ry * width + (x + 1)];
-            const isTouchingChar = leftVal < 130 && rightVal < 130;
+            const isTouchingChar = leftVal < 120 && rightVal < 120;
             if (!isTouchingChar) {
-              grayBuf[ry * width + x] = 250;
+              grayBuf[ry * width + x] = 252;
             }
           }
         }
@@ -226,7 +226,7 @@ function buildEnhancedCanvasForOcr(img) {
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   const maxDim = Math.max(naturalW, naturalH, 1);
-  const targetMaxDim = 1600;
+  const targetMaxDim = 2000;
   const scale = maxDim > targetMaxDim ? targetMaxDim / maxDim : 1;
 
   const width = Math.max(1, Math.round(naturalW * scale));
@@ -370,7 +370,7 @@ function detectStripeBarcodeRegions(canvas, scale) {
       }
 
       const span = Math.max(1, lastX - firstX);
-      if (transitions >= 20 && span > w * 0.18) {
+      if (transitions >= 22 && span > w * 0.16) {
         rowScores[y] = transitions / span;
         rowMinX[y] = firstX;
         rowMaxX[y] = lastX;
@@ -398,11 +398,11 @@ function detectStripeBarcodeRegions(canvas, scale) {
       } else if (startY >= 0) {
         const endY = y - 2;
         const bandHeight = endY - startY;
-        if (bandHeight >= Math.max(20, h * 0.028) && countRows >= 5) {
+        if (bandHeight >= Math.max(18, h * 0.024) && countRows >= 5) {
           const avgMinX = Math.max(0, sumMinX / countRows - 6);
           const avgMaxX = Math.min(w, sumMaxX / countRows + 6);
           const bandWidth = avgMaxX - avgMinX;
-          if (bandWidth > bandHeight * 1.2) {
+          if (bandWidth > bandHeight * 1.15) {
             regions.push({
               type: "barcode",
               text: "",
@@ -426,20 +426,144 @@ function detectStripeBarcodeRegions(canvas, scale) {
   }
 }
 
-function mergeDetectedBarcodes(nativeBarcodes, stripeBarcodes) {
+// Deteksi blok kode QR/2D persegi di gambar (misalnya QR label sisi kanan seperti pada gambar contoh)
+function detectSquareMatrixRegions(canvas, scale) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !canvas.width || !canvas.height) return [];
+
+  try {
+    const w = canvas.width;
+    const h = canvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h).data;
+    const invScale = scale > 0 ? 1 / scale : 1;
+
+    const step = 4;
+    const gw = Math.floor(w / step);
+    const gh = Math.floor(h / step);
+    if (gw < 16 || gh < 16) return [];
+
+    const denseMask = new Uint8Array(gw * gh);
+    const win = 3;
+
+    for (let gy = win; gy < gh - win; gy += 1) {
+      for (let gx = win; gx < gw - win; gx += 1) {
+        let darkCount = 0;
+        let transitions = 0;
+        let prevDark = false;
+        let totalSamples = 0;
+
+        for (let dy = -win; dy <= win; dy += 1) {
+          const py = Math.min(h - 1, (gy + dy) * step);
+          for (let dx = -win; dx <= win; dx += 1) {
+            const px = Math.min(w - 1, (gx + dx) * step);
+            const isDark = imgData[(py * w + px) * 4] < 130;
+            if (isDark) darkCount += 1;
+            if (dx > -win && isDark !== prevDark) transitions += 1;
+            prevDark = isDark;
+            totalSamples += 1;
+          }
+        }
+
+        const darkRatio = darkCount / Math.max(1, totalSamples);
+        if (darkRatio >= 0.25 && darkRatio <= 0.75 && transitions >= 8) {
+          denseMask[gy * gw + gx] = 1;
+        }
+      }
+    }
+
+    const visited = new Uint8Array(gw * gh);
+    const queue = new Int32Array(gw * gh);
+    const regions = [];
+
+    for (let gy = 1; gy < gh - 1; gy += 1) {
+      for (let gx = 1; gx < gw - 1; gx += 1) {
+        const start = gy * gw + gx;
+        if (!denseMask[start] || visited[start]) continue;
+
+        let head = 0;
+        let tail = 0;
+        queue[tail++] = start;
+        visited[start] = 1;
+
+        let count = 0;
+        let minX = gx;
+        let maxX = gx;
+        let minY = gy;
+        let maxY = gy;
+
+        while (head < tail) {
+          const curr = queue[head++];
+          const cy = Math.floor(curr / gw);
+          const cx = curr - cy * gw;
+          count += 1;
+          if (cx < minX) minX = cx;
+          if (cx > maxX) maxX = cx;
+          if (cy < minY) minY = cy;
+          if (cy > maxY) maxY = cy;
+
+          const neighbors = [
+            cx > 0 ? curr - 1 : -1,
+            cx < gw - 1 ? curr + 1 : -1,
+            cy > 0 ? curr - gw : -1,
+            cy < gh - 1 ? curr + gw : -1
+          ];
+          for (let n = 0; n < 4; n += 1) {
+            const nb = neighbors[n];
+            if (nb >= 0 && denseMask[nb] && !visited[nb]) {
+              visited[nb] = 1;
+              queue[tail++] = nb;
+            }
+          }
+        }
+
+        const boxW = (maxX - minX + 1) * step;
+        const boxH = (maxY - minY + 1) * step;
+        const aspect = boxW / Math.max(1, boxH);
+        const minSide = Math.max(36, Math.min(w, h) * 0.085);
+
+        if (
+          count >= 18 &&
+          boxW >= minSide &&
+          boxH >= minSide &&
+          aspect >= 0.72 &&
+          aspect <= 1.38
+        ) {
+          const pad = 4 * step;
+          regions.push({
+            type: "barcode",
+            text: "",
+            format: "QR_CODE",
+            bbox: {
+              x0: Math.max(0, (minX * step - pad)) * invScale,
+              y0: Math.max(0, (minY * step - pad)) * invScale,
+              x1: Math.min(w, ((maxX + 1) * step + pad)) * invScale,
+              y1: Math.min(h, ((maxY + 1) * step + pad)) * invScale
+            }
+          });
+        }
+      }
+    }
+
+    return regions;
+  } catch (err) {
+    return [];
+  }
+}
+
+function mergeDetectedBarcodes(nativeBarcodes, extraRegions) {
   const merged = [...nativeBarcodes];
-  stripeBarcodes.forEach((sb) => {
-    const sbMidY = (sb.bbox.y0 + sb.bbox.y1) / 2;
-    const sbMidX = (sb.bbox.x0 + sb.bbox.x1) / 2;
+  extraRegions.forEach((reg) => {
+    const rMidY = (reg.bbox.y0 + reg.bbox.y1) / 2;
+    const rMidX = (reg.bbox.x0 + reg.bbox.x1) / 2;
     const alreadyCovered = merged.some(
       (nb) =>
-        sbMidX >= nb.bbox.x0 - 16 &&
-        sbMidX <= nb.bbox.x1 + 16 &&
-        sbMidY >= nb.bbox.y0 - 16 &&
-        sbMidY <= nb.bbox.y1 + 16
+        rMidX >= nb.bbox.x0 - 20 &&
+        rMidX <= nb.bbox.x1 + 20 &&
+        rMidY >= nb.bbox.y0 - 20 &&
+        rMidY <= nb.bbox.y1 + 20
     );
     if (!alreadyCovered) {
-      merged.push(sb);
+      merged.push(reg);
     }
   });
   return merged;
@@ -548,7 +672,7 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
   const sh = Math.min(naturalH - sy, Math.ceil(bHeight + marginY * 2));
   if (sw <= 10 || sh <= 10) return;
 
-  const quietPad = 56;
+  const quietPad = 64;
   const upScale = sw < 900 ? 2 : 1;
   const cropCanvas = document.createElement("canvas");
   cropCanvas.width = sw * upScale + quietPad * 2;
@@ -810,7 +934,7 @@ function extractWordsFromTesseractData(data) {
 
 function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
   const invScale = scale > 0 ? 1 / scale : 1;
-  const maxCanvasW = canvas.width * 0.88;
+  const maxCanvasW = canvas.width * 0.9;
   const maxCanvasH = canvas.height * 0.16;
 
   return rawWords
@@ -821,13 +945,13 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
 
       const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
       const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
-      if (boxW < 5 || boxH < 7 || boxW > maxCanvasW || boxH > maxCanvasH) {
+      if (boxW < 4 || boxH < 6 || boxW > maxCanvasW || boxH > maxCanvasH) {
         return false;
       }
 
       const conf = typeof w.confidence === "number" ? w.confidence : 0;
-      const isCodeLike = /[0-9]/.test(rawStr) && rawStr.length >= 3;
-      const minConf = isCodeLike ? 20 : 38;
+      const isCodeLike = /[A-Za-z0-9]/.test(rawStr) && rawStr.length >= 2;
+      const minConf = isCodeLike ? 18 : 34;
       return conf >= minConf;
     })
     .map((w) => {
@@ -868,7 +992,7 @@ async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
     if (worker) {
       const recognizeRes = await withPromiseTimeout(
         worker.recognize(canvas, {}, { blocks: true, text: true, tsv: true }),
-        8500,
+        9500,
         null
       );
       const data = recognizeRes && recognizeRes.data ? recognizeRes.data : null;
@@ -888,7 +1012,7 @@ async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
           { logger: () => {}, tessedit_pageseg_mode: "11" },
           { blocks: true, text: true, tsv: true }
         ),
-        8500,
+        9500,
         null
       );
       const data = fallbackRes && fallbackRes.data ? fallbackRes.data : null;
@@ -914,14 +1038,14 @@ function attachFallbackValuesToBarcodes(barcodeItems, wordItems) {
     if (bc.text) return;
     const b = bc.bbox;
     const bHeight = Math.max(14, b.y1 - b.y0);
-    const maxSearchY = b.y1 + bHeight * 1.95;
+    const maxSearchY = b.y1 + bHeight * 2.1;
 
     const candidatesBelow = wordItems
       .filter((w) => {
         const wMidY = (w.bbox.y0 + w.bbox.y1) / 2;
         const wMidX = (w.bbox.x0 + w.bbox.x1) / 2;
         const isBelow = wMidY >= b.y1 - 4 && wMidY <= maxSearchY;
-        const isAlignedX = wMidX >= b.x0 - 52 && wMidX <= b.x1 + 52;
+        const isAlignedX = wMidX >= b.x0 - 60 && wMidX <= b.x1 + 60;
         const isCodeToken = /^[A-Za-z0-9\-_]{4,}$/.test(w.text) && !isLabelPrefixToken(w.text);
         return isBelow && isAlignedX && isCodeToken;
       })
@@ -956,7 +1080,7 @@ function sortDetectedItemsReadingOrder(items) {
 async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   const token = ++ocrRunToken;
   clearPhotoLensState();
-  setPhotoLensStatus("Memindai & memutihkan dokumen...", false);
+  setPhotoLensStatus("Auto-crop & deteksi teks/barkode...", false);
 
   if (capturedPhotoPreview && rawImageUrl) {
     capturedPhotoPreview.src = rawImageUrl;
@@ -987,7 +1111,8 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
     if (token !== ocrRunToken) return;
 
     const stripeBarcodes = detectStripeBarcodeRegions(enhancedCanvas, scale);
-    const barcodeItems = mergeDetectedBarcodes(nativeBarcodes, stripeBarcodes);
+    const matrixBarcodes = detectSquareMatrixRegions(enhancedCanvas, scale);
+    const barcodeItems = mergeDetectedBarcodes(nativeBarcodes, [...stripeBarcodes, ...matrixBarcodes]);
 
     await Promise.all(
       barcodeItems.map((bc) => decodeSingleBarcodeRegionFromImage(img, bc))
@@ -1094,23 +1219,24 @@ function updateFloatingActionBarPosition() {
   photoLensActionBar.classList.add("visible");
   setPhotoLensStatus("", true);
 
-  const barWidth = photoLensActionBar.offsetWidth || 196;
+  const barWidth = photoLensActionBar.offsetWidth || 210;
   const barHeight = photoLensActionBar.offsetHeight || 42;
   const gap = 10;
 
-  let targetLeft = 0;
-  let targetTop = (minTop + maxBottom) / 2 - barHeight / 2;
+  let targetLeft = (minLeft + maxRight) / 2 - barWidth / 2;
+  let targetTop = minTop - gap - barHeight;
 
-  if (maxRight + gap + barWidth <= stageRect.width - 8) {
-    targetLeft = maxRight + gap;
-  } else if (minLeft - gap - barWidth >= 8) {
-    targetLeft = minLeft - gap - barWidth;
-  } else {
-    targetLeft = Math.max(8, Math.min(stageRect.width - barWidth - 8, maxRight - barWidth));
+  if (targetTop < 56) {
     if (maxBottom + gap + barHeight <= stageRect.height - 12) {
       targetTop = maxBottom + gap;
-    } else if (minTop - gap - barHeight >= 56) {
-      targetTop = minTop - gap - barHeight;
+    } else if (maxRight + gap + barWidth <= stageRect.width - 8) {
+      targetLeft = maxRight + gap;
+      targetTop = (minTop + maxBottom) / 2 - barHeight / 2;
+    } else if (minLeft - gap - barWidth >= 8) {
+      targetLeft = minLeft - gap - barWidth;
+      targetTop = (minTop + maxBottom) / 2 - barHeight / 2;
+    } else {
+      targetTop = Math.max(56, Math.min(stageRect.height - barHeight - 12, (minTop + maxBottom) / 2 - barHeight / 2));
     }
   }
 
@@ -1154,13 +1280,13 @@ function renderOcrWordBoxes() {
     box.setAttribute("role", "button");
     box.setAttribute("aria-label", item.text || "Barcode");
 
-    const padX = 2;
-    const padY = item.type === "barcode" ? 2 : 1.5;
+    const padX = item.type === "barcode" ? 3 : 3.5;
+    const padY = item.type === "barcode" ? 3 : 2;
 
     const left = metrics.offsetX + item.bbox.x0 * metrics.scale - padX;
     const top = metrics.offsetY + item.bbox.y0 * metrics.scale - padY;
-    const width = Math.max(12, (item.bbox.x1 - item.bbox.x0) * metrics.scale + padX * 2);
-    const height = Math.max(14, (item.bbox.y1 - item.bbox.y0) * metrics.scale + padY * 2);
+    const width = Math.max(14, (item.bbox.x1 - item.bbox.x0) * metrics.scale + padX * 2);
+    const height = Math.max(16, (item.bbox.y1 - item.bbox.y0) * metrics.scale + padY * 2);
 
     box.style.left = `${left}px`;
     box.style.top = `${top}px`;
@@ -1181,7 +1307,7 @@ function findWordIndexAtPoint(clientX, clientY) {
 
   boxes.forEach((box) => {
     const rect = box.getBoundingClientRect();
-    const pad = 6;
+    const pad = 7;
     if (
       clientX >= rect.left - pad &&
       clientX <= rect.right + pad &&
@@ -1273,12 +1399,7 @@ function setupPhotoOcrInteractions() {
 
     if (!wasDragged) {
       if (startIdx >= 0) {
-        const existingPos = selectedOcrIndices.indexOf(startIdx);
-        if (existingPos >= 0) {
-          selectedOcrIndices.splice(existingPos, 1);
-        } else {
-          selectedOcrIndices.push(startIdx);
-        }
+        selectedOcrIndices = [startIdx];
         syncOcrSelectionVisuals();
       } else if (selectedOcrIndices.length > 0) {
         selectedOcrIndices = [];

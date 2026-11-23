@@ -212,7 +212,7 @@ async function triggerAutoFocus(showIndicator = true) {
       if (supportedModes.includes("continuous")) {
         setTimeout(() => {
           applyFocusConstraint("continuous").catch(() => {});
-        }, 220);
+        }, 260);
       }
       return;
     }
@@ -230,11 +230,13 @@ function startAutoFocusLoop() {
   if (autoFocusTimer) {
     clearInterval(autoFocusTimer);
   }
+  const intervalMs = typeof isTextPhotoCameraActive === "function" && isTextPhotoCameraActive() ? 2200 : 4500;
   autoFocusTimer = setInterval(() => {
     if (isCameraRunning && !isScanLocked && document.visibilityState === "visible") {
-      triggerAutoFocus(false);
+      const isPhotoMode = typeof isTextPhotoCameraActive === "function" && isTextPhotoCameraActive();
+      triggerAutoFocus(isPhotoMode);
     }
-  }, 4500);
+  }, intervalMs);
 }
 
 if (scannerViewport) {

@@ -129,7 +129,7 @@
   }
 }
 
-/* Lapisan Interaktif OCR & Barcode di Atas Foto (Bersih tanpa garis kotak saat belum dipilih) */
+/* Lapisan Interaktif OCR & Barcode di Atas Foto (Kapsul & Bingkai Halus Ala Google Lens) */
 .photo-ocr-layer {
   position: absolute;
   inset: 0;
@@ -138,37 +138,47 @@
   touch-action: none;
 }
 
-.ocr-word-box,
+.ocr-word-box {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
 .ocr-barcode-box {
   position: absolute;
-  border-radius: 4px;
-  background: transparent;
-  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-word-box:hover {
-  background: rgba(15, 98, 254, 0.08);
-  border-color: rgba(15, 98, 254, 0.35);
+  background: rgba(37, 99, 235, 0.22);
+  border-color: rgba(59, 130, 246, 0.65);
 }
 
 .ocr-barcode-box:hover {
-  background: rgba(2, 132, 199, 0.08);
-  border-color: rgba(2, 132, 199, 0.38);
+  background: rgba(2, 132, 199, 0.16);
+  border-color: #ffffff;
 }
 
 .ocr-word-box.selected,
 .ocr-barcode-box.selected {
-  background: rgba(15, 98, 254, 0.2);
-  border: 1.5px solid #0f62fe;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65);
+  background: rgba(37, 99, 235, 0.28);
+  border: 1.5px solid #2563eb;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72);
   z-index: 2;
 }
 
 .ocr-barcode-box.selected {
-  background: rgba(2, 132, 199, 0.18);
-  border-color: #0284c7;
+  background: rgba(2, 132, 199, 0.24);
+  border-color: #2563eb;
 }
 
 /* Penanda Tetesan Biru Ala Google Lens di Ujung Blok Terpilih */
