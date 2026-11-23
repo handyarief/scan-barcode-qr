@@ -507,10 +507,9 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
       return null;
     }
 
-    // Inset 0.942 memotong pinggiran bayangan/bingkai luar label agar hasil crop bersih setara CamScanner
     const qCx = (refined[0].x + refined[1].x + refined[2].x + refined[3].x) / 4;
     const qCy = (refined[0].y + refined[1].y + refined[2].y + refined[3].y) / 4;
-    const insetFactor = 0.942;
+    const insetFactor = 0.946;
 
     const normQuad = refined.map((pt) => {
       const ix = qCx + (pt.x - qCx) * insetFactor;
@@ -650,7 +649,6 @@ function measureQuadDisplacement(quadA, quadB) {
   return sumDist / 4;
 }
 
-// Auto-deteksi & trigger autofokus layar secara live; tidak memotret otomatis sebelum tombol foto ditekan
 function updateDocumentAutoScanStability(quad) {
   if (!quad || docAutoScanTriggered) return;
 
@@ -844,10 +842,17 @@ function warpDocumentQuadToCanvas(img, normQuad) {
   const leftH = Math.hypot(srcQuadPx[3].x - srcQuadPx[0].x, srcQuadPx[3].y - srcQuadPx[0].y);
   const rightH = Math.hypot(srcQuadPx[2].x - srcQuadPx[1].x, srcQuadPx[2].y - srcQuadPx[1].y);
 
-  let targetW = Math.max(160, Math.round((topW + botW) / 2));
-  let targetH = Math.max(160, Math.round((leftH + rightH) / 2));
+  let targetW = Math.max(240, Math.round((topW + botW) / 2));
+  let targetH = Math.max(240, Math.round((leftH + rightH) / 2));
 
-  const maxOutDim = 1800;
+  const minClearDim = 1350;
+  if (Math.max(targetW, targetH) < minClearDim) {
+    const upScale = minClearDim / Math.max(targetW, targetH);
+    targetW = Math.round(targetW * upScale);
+    targetH = Math.round(targetH * upScale);
+  }
+
+  const maxOutDim = 2200;
   if (Math.max(targetW, targetH) > maxOutDim) {
     const scale = maxOutDim / Math.max(targetW, targetH);
     targetW = Math.round(targetW * scale);
@@ -1030,7 +1035,7 @@ function separableBoxBlurFloat(src, w, h, radius) {
   return dst;
 }
 
-// Filter dokumen putih murni & teks/barcode hitam tajam ala CamScanner "Ajaib Pro"
+// Filter dokumen putih murni & teks/barcode tajam ala CamScanner "Ajaib Pro" (acuan Gambar 2)
 function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
   const ctx = canvas.getContext("2d");
   if (!ctx || !canvas.width || !canvas.height) return;
@@ -1047,67 +1052,69 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
       lum[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     }
 
-    // Estimasi latar belakang lokal dua tingkat agar bayangan & noda pada kertas terhapus merata
-    const hw = Math.max(24, Math.ceil(w / 2));
-    const hh = Math.max(24, Math.ceil(h / 2));
-    const halfLum = new Uint8Array(hw * hh);
-    for (let hy = 0; hy < hh; hy += 1) {
-      const sy = Math.min(h - 1, hy * 2);
+    // Estimasi latar belakang lokal beresolusi tinggi untuk menghapus bayangan & lipatan kertas
+    const hw = Math.max(48, Math.min(w, Math.round(w * 0.75)));
+    const hh = Math.max(48, Math.min(h, Math.round(h * 0.75)));
+    const gridLum = new Uint8Array(hw * hh);
+    const xRatio = w / hw;
+    const yRatio = h / hh;
+
+    for (let gy = 0; gy < hh; gy += 1) {
+      const sy = Math.min(h - 1, Math.round(gy * yRatio));
       const sOff = sy * w;
-      const dOff = hy * hw;
-      for (let hx = 0; hx < hw; hx += 1) {
-        const sx = Math.min(w - 1, hx * 2);
-        halfLum[dOff + hx] = lum[sOff + sx];
+      const dOff = gy * hw;
+      for (let gx = 0; gx < hw; gx += 1) {
+        const sx = Math.min(w - 1, Math.round(gx * xRatio));
+        gridLum[dOff + gx] = lum[sOff + sx];
       }
     }
 
-    const dilateRadius = Math.max(8, Math.round(Math.min(hw, hh) / 36));
-    const erodeRadius = Math.max(3, Math.round(dilateRadius * 0.42));
-    const fineBlurRadius = Math.max(6, Math.round(dilateRadius * 0.65));
-    const broadBlurRadius = Math.max(16, Math.round(dilateRadius * 1.55));
+    const dilateRadius = Math.max(10, Math.round(Math.min(hw, hh) / 38));
+    const erodeRadius = Math.max(3, Math.round(dilateRadius * 0.36));
+    const fineBlurRadius = Math.max(7, Math.round(dilateRadius * 0.65));
+    const broadBlurRadius = Math.max(18, Math.round(dilateRadius * 1.65));
 
-    const dilated = separableMorphOp1D(halfLum, hw, hh, dilateRadius, true);
+    const dilated = separableMorphOp1D(gridLum, hw, hh, dilateRadius, true);
     const closed = separableMorphOp1D(dilated, hw, hh, erodeRadius, false);
     const fineBg = separableBoxBlurFloat(closed, hw, hh, fineBlurRadius);
     const broadBg = separableBoxBlurFloat(closed, hw, hh, broadBlurRadius);
 
-    // Kurva pemutihan latar belakang ke putih murni (255) & penggelapan tinta ke hitam pekat (0)
+    // Kurva pemutihan latar kertas ke putih bersih (255) & penggelapan tinta/angka/huruf ke hitam tajam
     const toneBuf = new Uint8Array(total);
-    const blackPt = 0.66;
-    const whitePt = 0.94;
+    const blackPt = 0.62;
+    const whitePt = 0.89;
     const invRange = 1 / (whitePt - blackPt);
 
     for (let y = 0; y < h; y += 1) {
-      const hy = Math.min(hh - 1.001, y * 0.5);
-      const hy0 = Math.floor(hy);
-      const hy1 = Math.min(hh - 1, hy0 + 1);
-      const wy = hy - hy0;
+      const gy = Math.min(hh - 1.001, y / yRatio);
+      const gy0 = Math.floor(gy);
+      const gy1 = Math.min(hh - 1, gy0 + 1);
+      const wy = gy - gy0;
       const oneMinusWy = 1 - wy;
       const rOff = y * w;
 
       for (let x = 0; x < w; x += 1) {
-        const hx = Math.min(hw - 1.001, x * 0.5);
-        const hx0 = Math.floor(hx);
-        const hx1 = Math.min(hw - 1, hx0 + 1);
-        const wx = hx - hx0;
+        const gx = Math.min(hw - 1.001, x / xRatio);
+        const gx0 = Math.floor(gx);
+        const gx1 = Math.min(hw - 1, gx0 + 1);
+        const wx = gx - gx0;
         const oneMinusWx = 1 - wx;
 
-        const f00 = fineBg[hy0 * hw + hx0];
-        const f10 = fineBg[hy0 * hw + hx1];
-        const f01 = fineBg[hy1 * hw + hx0];
-        const f11 = fineBg[hy1 * hw + hx1];
+        const f00 = fineBg[gy0 * hw + gx0];
+        const f10 = fineBg[gy0 * hw + gx1];
+        const f01 = fineBg[gy1 * hw + gx0];
+        const f11 = fineBg[gy1 * hw + gx1];
         const localFineBg =
           (f00 * oneMinusWx + f10 * wx) * oneMinusWy + (f01 * oneMinusWx + f11 * wx) * wy;
 
-        const b00 = broadBg[hy0 * hw + hx0];
-        const b10 = broadBg[hy0 * hw + hx1];
-        const b01 = broadBg[hy1 * hw + hx0];
-        const b11 = broadBg[hy1 * hw + hx1];
+        const b00 = broadBg[gy0 * hw + gx0];
+        const b10 = broadBg[gy0 * hw + gx1];
+        const b01 = broadBg[gy1 * hw + gx0];
+        const b11 = broadBg[gy1 * hw + gx1];
         const localBroadBg =
           (b00 * oneMinusWx + b10 * wx) * oneMinusWy + (b01 * oneMinusWx + b11 * wx) * wy;
 
-        const localBg = Math.max(65, localFineBg * 0.65 + localBroadBg * 0.35);
-
+        const localBg = Math.max(70, localFineBg * 0.55 + localBroadBg * 0.45);
         const p = rOff + x;
         const ratio = lum[p] / localBg;
 
@@ -1118,13 +1125,13 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
           outGray = 0;
         } else {
           const t = (ratio - blackPt) * invRange;
-          outGray = Math.round(255 * Math.pow(t, 1.45));
+          outGray = Math.round(255 * Math.pow(t, 1.35));
         }
         toneBuf[p] = outGray;
       }
     }
 
-    // Penajaman tepi tinta agar huruf/angka kecil & garis barcode tetap bersih tanpa bintik latar
+    // Penajaman tepi huruf, angka kecil, & garis barcode agar jelas seperti hasil CamScanner Ajaib Pro
     const sharpBuf = new Uint8Array(toneBuf);
     for (let y = 1; y < h - 1; y += 1) {
       const rOff = y * w;
@@ -1144,9 +1151,9 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
               2 * toneBuf[yNext + x] +
               toneBuf[yNext + x + 1]) >>
             4;
-          const sharpened = center + 0.55 * (center - blur);
+          const sharpened = center + 0.85 * (center - blur);
           sharpBuf[rOff + x] =
-            sharpened >= 242 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
+            sharpened >= 238 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
         }
       }
     }
@@ -1205,20 +1212,20 @@ async function processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad = 
   }
 
   if (!outputCanvas) {
-    const maxOutDim = 1800;
-    const scale =
-      Math.max(naturalW, naturalH) > maxOutDim
-        ? maxOutDim / Math.max(naturalW, naturalH)
-        : 1;
+    const maxDim = Math.max(naturalW, naturalH, 1);
+    const targetDim = maxDim < 1350 ? 1500 : Math.min(2200, maxDim);
+    const scale = targetDim / maxDim;
     outputCanvas = document.createElement("canvas");
     outputCanvas.width = Math.max(1, Math.round(naturalW * scale));
     outputCanvas.height = Math.max(1, Math.round(naturalH * scale));
     const oCtx = outputCanvas.getContext("2d");
     if (oCtx) {
+      oCtx.imageSmoothingEnabled = true;
+      oCtx.imageSmoothingQuality = "high";
       oCtx.drawImage(img, 0, 0, outputCanvas.width, outputCanvas.height);
     }
   }
 
   applyCamScannerDocumentFilter(outputCanvas, wasCropped);
-  return outputCanvas.toDataURL("image/jpeg", 0.98);
+  return outputCanvas.toDataURL("image/jpeg", 0.99);
 }

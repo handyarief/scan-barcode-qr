@@ -138,7 +138,6 @@ function copyScanSheetValue() {
     }, 1400);
   }
 
-  // Langsung tutup sheet & lanjutkan kamera untuk scan berikutnya
   const shouldPopSheetHistory = Boolean(isSheetHistoryPushed && window.history.length > 1);
   isSheetHistoryPushed = false;
   closeScanSheetOnly();
@@ -160,6 +159,27 @@ function copyScanSheetValue() {
     }
   }
   resumeCameraForNextScan();
+}
+
+function openFullscreenQrModalDirect() {
+  closeScanSheetOnly();
+  if (fullscreenQrModal) {
+    fullscreenQrModal.classList.add("open");
+    fullscreenQrModal.setAttribute("aria-hidden", "false");
+    const isFromPhotoLens =
+      activeAppFeature === "text-to-qr" &&
+      photoLensOverlay &&
+      photoLensOverlay.classList.contains("open");
+    const qrModalRoute = isFromPhotoLens
+      ? "text-to-qr:photo-lens:qr-modal"
+      : `${activeAppFeature}:qr-modal`;
+    if (isSheetHistoryPushed) {
+      replaceAppHistoryState(qrModalRoute);
+    } else {
+      pushAppHistoryState(qrModalRoute);
+    }
+    isSheetHistoryPushed = false;
+  }
 }
 
 function completeScan() {
@@ -187,24 +207,7 @@ function completeScan() {
     return;
   }
 
-  closeScanSheetOnly();
-  if (fullscreenQrModal) {
-    fullscreenQrModal.classList.add("open");
-    fullscreenQrModal.setAttribute("aria-hidden", "false");
-    const isFromPhotoLens =
-      activeAppFeature === "text-to-qr" &&
-      photoLensOverlay &&
-      photoLensOverlay.classList.contains("open");
-    const qrModalRoute = isFromPhotoLens
-      ? "text-to-qr:photo-lens:qr-modal"
-      : `${activeAppFeature}:qr-modal`;
-    if (isSheetHistoryPushed) {
-      replaceAppHistoryState(qrModalRoute);
-    } else {
-      pushAppHistoryState(qrModalRoute);
-    }
-    isSheetHistoryPushed = false;
-  }
+  openFullscreenQrModalDirect();
 }
 
 function closeFullscreenQrModal() {
@@ -271,7 +274,7 @@ function detectScanFormatType(value, fallbackLabel = "") {
   return fallbackLabel || `Scan ${currentScanMode.toUpperCase()}`;
 }
 
-function generateQR(text, formatName = "Scan") {
+function generateQR(text, formatName = "Scan", directFullscreen = false) {
   const cleanText = text.trim();
   if (!cleanText || isScanLocked || cleanText === lastScanned) return;
 
@@ -293,9 +296,9 @@ function generateQR(text, formatName = "Scan") {
     }
   } else {
     if (statusBadge) {
-      statusBadge.style.display = "none";
-      statusBadge.textContent = "";
-      statusBadge.classList.remove("ready");
+      statusBadge.style.display = "inline-block";
+      statusBadge.textContent = "QR Siap";
+      statusBadge.classList.add("ready");
     }
   }
 
@@ -309,6 +312,11 @@ function generateQR(text, formatName = "Scan") {
       colorLight: "#ffffff",
       correctLevel: QRCode.CorrectLevel.M
     });
+  }
+
+  if (directFullscreen && activeAppFeature === "text-to-qr") {
+    openFullscreenQrModalDirect();
+    return;
   }
 
   openScanSheet(cleanText, formatName);

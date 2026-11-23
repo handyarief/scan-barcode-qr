@@ -111,20 +111,77 @@ function closePhotoLensPanel(fromBack = false) {
   }
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve) => {
+    if (!blob) {
+      resolve("");
+      return;
+    }
+    try {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve(ev && ev.target && ev.target.result ? String(ev.target.result) : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      resolve("");
+    }
+  });
+}
+
 function captureSnapshotFromVideo() {
   const videoEl = document.querySelector("#reader video");
   if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return "";
   try {
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    const maxDim = Math.max(vw, vh, 1);
+    const scale = maxDim < 1440 ? 1440 / maxDim : 1;
     const canvas = document.createElement("canvas");
-    canvas.width = videoEl.videoWidth;
-    canvas.height = videoEl.videoHeight;
+    canvas.width = Math.max(1, Math.round(vw * scale));
+    canvas.height = Math.max(1, Math.round(vh * scale));
     const ctx = canvas.getContext("2d");
     if (!ctx) return "";
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.98);
+    return canvas.toDataURL("image/jpeg", 0.99);
   } catch (err) {
     return "";
   }
+}
+
+async function captureHighResPhotoFromCamera() {
+  if (typeof triggerAutoFocus === "function") {
+    await withPromiseTimeout(triggerAutoFocus(false), 320, null).catch(() => {});
+  }
+
+  try {
+    if (
+      typeof html5QrCode !== "undefined" &&
+      html5QrCode &&
+      typeof html5QrCode.getRunningTrackCapabilities === "function"
+    ) {
+      const videoEl = document.querySelector("#reader video");
+      const mediaStream = videoEl && videoEl.srcObject ? videoEl.srcObject : null;
+      const videoTrack =
+        mediaStream && typeof mediaStream.getVideoTracks === "function"
+          ? mediaStream.getVideoTracks()[0]
+          : null;
+
+      if (videoTrack && typeof window.ImageCapture !== "undefined") {
+        const imageCapture = new window.ImageCapture(videoTrack);
+        if (typeof imageCapture.takePhoto === "function") {
+          const photoBlob = await withPromiseTimeout(imageCapture.takePhoto(), 1800, null);
+          if (photoBlob) {
+            const dataUrl = await blobToDataUrl(photoBlob);
+            if (dataUrl) return dataUrl;
+          }
+        }
+      }
+    }
+  } catch (err) {}
+
+  return captureSnapshotFromVideo();
 }
 
 function loadImageElement(imageUrl) {
@@ -184,8 +241,8 @@ function buildEnhancedCanvasForOcr(img) {
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   const maxDim = Math.max(naturalW, naturalH, 1);
-  const targetMaxDim = 1600;
-  const scale = maxDim > targetMaxDim ? targetMaxDim / maxDim : 1;
+  const targetMaxDim = maxDim < 1400 ? 1650 : Math.min(2000, maxDim);
+  const scale = targetMaxDim / maxDim;
 
   const width = Math.max(1, Math.round(naturalW * scale));
   const height = Math.max(1, Math.round(naturalH * scale));
@@ -195,22 +252,47 @@ function buildEnhancedCanvasForOcr(img) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return { canvas, scale: 1, cleanGray: null, width, height };
 
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, width, height);
+
   try {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
-    const len = data.length;
-    const normGray = new Uint8Array(width * height);
+    const total = width * height;
+    const rawGray = new Uint8Array(total);
 
-    for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      const rawGray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-      const crispVal = rawGray >= 230 ? 255 : rawGray <= 85 ? 0 : rawGray;
-      normGray[p] = crispVal;
-      data[i] = crispVal;
-      data[i + 1] = crispVal;
-      data[i + 2] = crispVal;
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      rawGray[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    }
+
+    // Estimasi latar belakang lokal untuk membersihkan noda lipatan kertas sebelum OCR
+    const blurRadius = Math.max(12, Math.round(Math.min(width, height) / 42));
+    const localBg =
+      typeof separableBoxBlurFloat === "function"
+        ? separableBoxBlurFloat(rawGray, width, height, blurRadius)
+        : null;
+
+    const normGray = new Uint8Array(total);
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      const gVal = rawGray[p];
+      const bgVal = localBg ? Math.max(85, localBg[p]) : 235;
+      const ratio = gVal / bgVal;
+      let cleanVal;
+      if (ratio >= 0.87 || gVal >= 224) {
+        cleanVal = 255;
+      } else if (ratio <= 0.65 || gVal <= 95) {
+        cleanVal = 0;
+      } else {
+        cleanVal = Math.max(0, Math.min(255, Math.round(((ratio - 0.65) / 0.22) * 255)));
+      }
+      normGray[p] = cleanVal;
+      data[i] = cleanVal;
+      data[i + 1] = cleanVal;
+      data[i + 2] = cleanVal;
       data[i + 3] = 255;
     }
+
     ctx.putImageData(imageData, 0, 0);
     return { canvas, scale, cleanGray: normGray, width, height };
   } catch (err) {
@@ -380,7 +462,6 @@ function detectStripeBarcodeRegions(canvas, scale) {
   }
 }
 
-// Deteksi blok kode QR/2D persegi di gambar
 function detectSquareMatrixRegions(canvas, scale) {
   const ctx = canvas.getContext("2d");
   if (!ctx || !canvas.width || !canvas.height) return [];
@@ -678,6 +759,20 @@ function isBoxOverlappingBarcode(wordBbox, barcodeItems) {
 
   return barcodeItems.some((bc) => {
     const b = bc.bbox;
+    if (bc.type === "barcode" && (!bc.text || bc.format === "CODE_128")) {
+      const interX0 = Math.max(wordBbox.x0, b.x0);
+      const interY0 = Math.max(wordBbox.y0, b.y0);
+      const interX1 = Math.min(wordBbox.x1, b.x1);
+      const interY1 = Math.min(wordBbox.y1, b.y1);
+      if (interX1 > interX0 && interY1 > interY0) {
+        const interArea = (interX1 - interX0) * (interY1 - interY0);
+        if (interArea / wArea > 0.72) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
       return true;
     }
@@ -687,7 +782,7 @@ function isBoxOverlappingBarcode(wordBbox, barcodeItems) {
     const interY1 = Math.min(wordBbox.y1, b.y1);
     if (interX1 > interX0 && interY1 > interY0) {
       const interArea = (interX1 - interX0) * (interY1 - interY0);
-      if (interArea / wArea > 0.55) {
+      if (interArea / wArea > 0.65) {
         return true;
       }
     }
@@ -703,7 +798,7 @@ function isBarcodeArtifactText(text, bbox) {
   const width = Math.max(1, bbox.x1 - bbox.x0);
   const height = Math.max(1, bbox.y1 - bbox.y0);
 
-  if (/^[|!Il1i\[\]\/\\\-_=.,:;'"`~]+$/.test(clean) && height > width * 1.15) {
+  if (/^[|!Il1i\[\]\/\\\-_=.,:;'"`~]+$/.test(clean) && height > width * 1.45) {
     return true;
   }
   if (/^[|\/\\]{2,}$/.test(clean)) {
@@ -721,11 +816,11 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
   const y1 = Math.min(imgH, Math.ceil(rawBbox.y1));
   const bw = x1 - x0;
   const bh = y1 - y0;
-  if (bw <= 4 || bh <= 4) return rawBbox;
+  if (bw <= 3 || bh <= 3) return rawBbox;
 
   const colCounts = new Uint16Array(bw);
   const rowCounts = new Uint16Array(bh);
-  const inkThreshold = 195;
+  const inkThreshold = 205;
 
   for (let y = y0; y < y1; y += 1) {
     const rOff = y * imgW;
@@ -835,7 +930,7 @@ function extractWordsFromTesseractData(data) {
 function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
   const invScale = scale > 0 ? 1 / scale : 1;
   const maxCanvasW = canvas.width * 0.96;
-  const maxCanvasH = canvas.height * 0.24;
+  const maxCanvasH = canvas.height * 0.25;
 
   return rawWords
     .filter((w) => {
@@ -845,13 +940,13 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
 
       const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
       const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
-      if (boxW < 3 || boxH < 4 || boxW > maxCanvasW || boxH > maxCanvasH) {
+      if (boxW < 2 || boxH < 3 || boxW > maxCanvasW || boxH > maxCanvasH) {
         return false;
       }
 
       const conf = typeof w.confidence === "number" ? w.confidence : 55;
-      const isCodeLike = /[A-Za-z0-9]/.test(rawStr);
-      const minConf = isCodeLike ? 8 : 22;
+      const isAlnum = /^[A-Za-z0-9\-_./:()<>]+$/.test(rawStr);
+      const minConf = isAlnum ? 3 : 12;
       return conf >= minConf;
     })
     .map((w) => {
@@ -890,35 +985,48 @@ async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
   try {
     const worker = await withPromiseTimeout(getPersistentOcrWorker(), 12000, null);
     if (worker) {
+      await withPromiseTimeout(
+        worker.setParameters({
+          tessedit_pageseg_mode: "6",
+          preserve_interword_spaces: "1"
+        }),
+        2000,
+        null
+      );
+
       const recognizeRes = await withPromiseTimeout(
         worker.recognize(canvas, {}, { blocks: true, text: true, tsv: true }),
-        15000,
+        16000,
         null
       );
       const data = recognizeRes && recognizeRes.data ? recognizeRes.data : null;
-      const parsed = parseRawTesseractWords(
+      let parsed = parseRawTesseractWords(
         extractWordsFromTesseractData(data),
         canvas,
         scale,
         cleanGray
       );
-      if (parsed.length > 0) {
-        return parsed;
+
+      if (parsed.length < 4) {
+        const binCanvas = buildBinarizedCropCanvas(canvas, 0.93);
+        const retryRes = await withPromiseTimeout(
+          worker.recognize(binCanvas, {}, { blocks: true, text: true, tsv: true }),
+          14000,
+          null
+        );
+        const retryData = retryRes && retryRes.data ? retryRes.data : null;
+        const retryParsed = parseRawTesseractWords(
+          extractWordsFromTesseractData(retryData),
+          binCanvas,
+          scale,
+          cleanGray
+        );
+        if (retryParsed.length > parsed.length) {
+          parsed = retryParsed;
+        }
       }
 
-      const binCanvas = buildBinarizedCropCanvas(canvas, 0.92);
-      const retryRes = await withPromiseTimeout(
-        worker.recognize(binCanvas, {}, { blocks: true, text: true, tsv: true }),
-        12000,
-        null
-      );
-      const retryData = retryRes && retryRes.data ? retryRes.data : null;
-      return parseRawTesseractWords(
-        extractWordsFromTesseractData(retryData),
-        binCanvas,
-        scale,
-        cleanGray
-      );
+      return parsed;
     }
 
     if (typeof window.Tesseract !== "undefined" && typeof window.Tesseract.recognize === "function") {
@@ -929,7 +1037,7 @@ async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
           { logger: () => {}, tessedit_pageseg_mode: "6" },
           { blocks: true, text: true, tsv: true }
         ),
-        15000,
+        16000,
         null
       );
       const data = fallbackRes && fallbackRes.data ? fallbackRes.data : null;
@@ -984,8 +1092,8 @@ function sortDetectedItemsReadingOrder(items) {
     const midAY = (a.bbox.y0 + a.bbox.y1) / 2;
     const midBY = (b.bbox.y0 + b.bbox.y1) / 2;
     const lineThreshold = Math.max(
-      14,
-      ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.32
+      12,
+      ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.34
     );
     if (Math.abs(midAY - midBY) > lineThreshold) {
       return midAY - midBY;
@@ -1198,12 +1306,12 @@ function renderOcrWordBoxes() {
     box.setAttribute("aria-label", item.text || "Barcode");
 
     const padX = item.type === "barcode" ? 3 : 3.5;
-    const padY = item.type === "barcode" ? 3 : 2;
+    const padY = item.type === "barcode" ? 3 : 2.5;
 
     const left = metrics.offsetX + item.bbox.x0 * metrics.scale - padX;
     const top = metrics.offsetY + item.bbox.y0 * metrics.scale - padY;
     const width = Math.max(14, (item.bbox.x1 - item.bbox.x0) * metrics.scale + padX * 2);
-    const height = Math.max(16, (item.bbox.y1 - item.bbox.y0) * metrics.scale + padY * 2);
+    const height = Math.max(15, (item.bbox.y1 - item.bbox.y0) * metrics.scale + padY * 2);
 
     box.style.left = `${left}px`;
     box.style.top = `${top}px`;
@@ -1219,12 +1327,14 @@ function renderOcrWordBoxes() {
 function findWordIndexAtPoint(clientX, clientY) {
   if (!photoOcrLayer) return -1;
   const boxes = photoOcrLayer.querySelectorAll(".ocr-word-box, .ocr-barcode-box");
-  let closestIdx = -1;
-  let closestDist = Infinity;
+  let bestWordIdx = -1;
+  let bestWordDist = Infinity;
+  let bestBarcodeIdx = -1;
+  let bestBarcodeDist = Infinity;
 
   boxes.forEach((box) => {
     const rect = box.getBoundingClientRect();
-    const pad = 7;
+    const pad = 8;
     if (
       clientX >= rect.left - pad &&
       clientX <= rect.right + pad &&
@@ -1234,14 +1344,20 @@ function findWordIndexAtPoint(clientX, clientY) {
       const cx = (rect.left + rect.right) / 2;
       const cy = (rect.top + rect.bottom) / 2;
       const dist = Math.hypot(clientX - cx, clientY - cy);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIdx = Number(box.getAttribute("data-index"));
+      const idx = Number(box.getAttribute("data-index"));
+      if (box.classList.contains("ocr-word-box")) {
+        if (dist < bestWordDist) {
+          bestWordDist = dist;
+          bestWordIdx = idx;
+        }
+      } else if (dist < bestBarcodeDist) {
+        bestBarcodeDist = dist;
+        bestBarcodeIdx = idx;
       }
     }
   });
 
-  return closestIdx;
+  return bestWordIdx >= 0 ? bestWordIdx : bestBarcodeIdx;
 }
 
 function selectItemsInDragRect(startPt, endPt, anchorIdx) {
@@ -1431,7 +1547,7 @@ function retakePhotoOnly() {
   }
 }
 
-function triggerPhotoCapture() {
+async function triggerPhotoCapture() {
   if (activeAppFeature === "scan-to-excel" && !isExcelTextPhotoMode) {
     enterExcelTextPhotoMode();
     return;
@@ -1440,9 +1556,10 @@ function triggerPhotoCapture() {
   docAutoScanTriggered = true;
   const capturedQuad = lastDetectedDocQuad ? lastDetectedDocQuad.map((p) => ({ ...p })) : null;
   clearPhotoLensState();
-  const snapDataUrl = captureSnapshotFromVideo();
   openPhotoLensPanel();
+  setPhotoLensStatus("Mengambil foto resolusi tinggi...", false);
 
+  const snapDataUrl = await captureHighResPhotoFromCamera();
   if (snapDataUrl) {
     applyDetectedPhotoText(snapDataUrl, capturedQuad);
   } else if (photoCaptureInput) {
@@ -1568,7 +1685,7 @@ function createBarcodeFromPhotoText() {
   resetCandidateScan();
 
   const resolvedFormat = detectedFormat || detectScanFormatType(targetVal, "OCR Text");
-  generateQR(targetVal, resolvedFormat);
+  generateQR(targetVal, resolvedFormat, activeAppFeature === "text-to-qr");
 }
 
 function handlePhotoFileSelected(e) {
