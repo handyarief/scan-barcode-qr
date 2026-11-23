@@ -505,6 +505,10 @@ function startNativeLiveScanner() {
 }
 
 function ensureCameraStarted() {
+  if (typeof preloadOcrWorker === "function" && typeof isTextPhotoCameraActive === "function" && isTextPhotoCameraActive()) {
+    preloadOcrWorker();
+  }
+
   if (isCameraRunning) {
     resumeCameraForNextScan();
     return;

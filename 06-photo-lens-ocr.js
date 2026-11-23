@@ -1,4 +1,6 @@
 // 7. Engine Foto Lens: Auto-Crop CamScanner + Deteksi Barcode/QR & Huruf/Angka Akurat
+let ocrPreloadPromise = null;
+
 function setPhotoLensStatus(msg, hide = false) {
   if (!photoLensStatus) return;
   photoLensStatus.textContent = msg;
@@ -158,7 +160,7 @@ async function getPersistentOcrWorker() {
           logger: () => {}
         });
         await worker.setParameters({
-          tessedit_pageseg_mode: "11",
+          tessedit_pageseg_mode: "6",
           preserve_interword_spaces: "1"
         });
         return worker;
@@ -171,62 +173,18 @@ async function getPersistentOcrWorker() {
   return sharedTesseractWorkerPromise;
 }
 
-function suppressLongTableLinesOnGrayBuffer(grayBuf, width, height) {
-  const minHorizRun = Math.max(85, Math.floor(width * 0.3));
-  for (let y = 1; y < height - 1; y += 1) {
-    const rowOffset = y * width;
-    let runStart = -1;
-    for (let x = 0; x <= width; x += 1) {
-      const isDark = x < width && grayBuf[rowOffset + x] < 145;
-      if (isDark) {
-        if (runStart < 0) runStart = x;
-      } else if (runStart >= 0) {
-        const runLen = x - runStart;
-        if (runLen >= minHorizRun) {
-          for (let rx = runStart; rx < x; rx += 1) {
-            const aboveVal = grayBuf[(y - 1) * width + rx];
-            const belowVal = grayBuf[(y + 1) * width + rx];
-            const isTouchingChar = aboveVal < 120 && belowVal < 120;
-            if (!isTouchingChar) {
-              grayBuf[rowOffset + rx] = 252;
-            }
-          }
-        }
-        runStart = -1;
-      }
-    }
+function preloadOcrWorker() {
+  if (!ocrPreloadPromise) {
+    ocrPreloadPromise = withPromiseTimeout(getPersistentOcrWorker(), 15000, null).catch(() => null);
   }
-
-  const minVertRun = Math.max(95, Math.floor(height * 0.3));
-  for (let x = 1; x < width - 1; x += 1) {
-    let runStart = -1;
-    for (let y = 0; y <= height; y += 1) {
-      const isDark = y < height && grayBuf[y * width + x] < 145;
-      if (isDark) {
-        if (runStart < 0) runStart = y;
-      } else if (runStart >= 0) {
-        const runLen = y - runStart;
-        if (runLen >= minVertRun) {
-          for (let ry = runStart; ry < y; ry += 1) {
-            const leftVal = grayBuf[ry * width + (x - 1)];
-            const rightVal = grayBuf[ry * width + (x + 1)];
-            const isTouchingChar = leftVal < 120 && rightVal < 120;
-            if (!isTouchingChar) {
-              grayBuf[ry * width + x] = 252;
-            }
-          }
-        }
-        runStart = -1;
-      }
-    }
-  }
+  return ocrPreloadPromise;
 }
 
 function buildEnhancedCanvasForOcr(img) {
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   const maxDim = Math.max(naturalW, naturalH, 1);
-  const targetMaxDim = 2000;
+  const targetMaxDim = 1600;
   const scale = maxDim > targetMaxDim ? targetMaxDim / maxDim : 1;
 
   const width = Math.max(1, Math.round(naturalW * scale));
@@ -245,16 +203,12 @@ function buildEnhancedCanvasForOcr(img) {
     const normGray = new Uint8Array(width * height);
 
     for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      normGray[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-    }
-
-    suppressLongTableLinesOnGrayBuffer(normGray, width, height);
-
-    for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      const val = normGray[p];
-      data[i] = val;
-      data[i + 1] = val;
-      data[i + 2] = val;
+      const rawGray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      const crispVal = rawGray >= 230 ? 255 : rawGray <= 85 ? 0 : rawGray;
+      normGray[p] = crispVal;
+      data[i] = crispVal;
+      data[i + 1] = crispVal;
+      data[i + 2] = crispVal;
       data[i + 3] = 255;
     }
     ctx.putImageData(imageData, 0, 0);
@@ -399,8 +353,8 @@ function detectStripeBarcodeRegions(canvas, scale) {
         const endY = y - 2;
         const bandHeight = endY - startY;
         if (bandHeight >= Math.max(18, h * 0.024) && countRows >= 5) {
-          const avgMinX = Math.max(0, sumMinX / countRows - 6);
-          const avgMaxX = Math.min(w, sumMaxX / countRows + 6);
+          const avgMinX = Math.max(0, sumMinX / countRows - 4);
+          const avgMaxX = Math.min(w, sumMaxX / countRows + 4);
           const bandWidth = avgMaxX - avgMinX;
           if (bandWidth > bandHeight * 1.15) {
             regions.push({
@@ -409,9 +363,9 @@ function detectStripeBarcodeRegions(canvas, scale) {
               format: "CODE_128",
               bbox: {
                 x0: avgMinX * invScale,
-                y0: Math.max(0, startY - 2) * invScale,
+                y0: Math.max(0, startY) * invScale,
                 x1: avgMaxX * invScale,
-                y1: Math.min(h, endY + 2) * invScale
+                y1: Math.min(h, endY) * invScale
               }
             });
           }
@@ -426,7 +380,7 @@ function detectStripeBarcodeRegions(canvas, scale) {
   }
 }
 
-// Deteksi blok kode QR/2D persegi di gambar (misalnya QR label sisi kanan seperti pada gambar contoh)
+// Deteksi blok kode QR/2D persegi di gambar
 function detectSquareMatrixRegions(canvas, scale) {
   const ctx = canvas.getContext("2d");
   if (!ctx || !canvas.width || !canvas.height) return [];
@@ -528,7 +482,7 @@ function detectSquareMatrixRegions(canvas, scale) {
           aspect >= 0.72 &&
           aspect <= 1.38
         ) {
-          const pad = 4 * step;
+          const pad = 3 * step;
           regions.push({
             type: "barcode",
             text: "",
@@ -665,7 +619,7 @@ async function decodeSingleBarcodeRegionFromImage(img, bc) {
   const bHeight = Math.max(10, bc.bbox.y1 - bc.bbox.y0);
 
   const marginX = Math.round(bWidth * 0.18);
-  const marginY = Math.round(bHeight * 0.25);
+  const marginY = Math.round(bHeight * 0.16);
   const sx = Math.max(0, Math.floor(bc.bbox.x0 - marginX));
   const sy = Math.max(0, Math.floor(bc.bbox.y0 - marginY));
   const sw = Math.min(naturalW - sx, Math.ceil(bWidth + marginX * 2));
@@ -724,7 +678,7 @@ function isBoxOverlappingBarcode(wordBbox, barcodeItems) {
 
   return barcodeItems.some((bc) => {
     const b = bc.bbox;
-    if (cx >= b.x0 - 2 && cx <= b.x1 + 2 && cy >= b.y0 - 2 && cy <= b.y1 + 2) {
+    if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
       return true;
     }
     const interX0 = Math.max(wordBbox.x0, b.x0);
@@ -733,7 +687,7 @@ function isBoxOverlappingBarcode(wordBbox, barcodeItems) {
     const interY1 = Math.min(wordBbox.y1, b.y1);
     if (interX1 > interX0 && interY1 > interY0) {
       const interArea = (interX1 - interX0) * (interY1 - interY0);
-      if (interArea / wArea > 0.35) {
+      if (interArea / wArea > 0.55) {
         return true;
       }
     }
@@ -749,7 +703,7 @@ function isBarcodeArtifactText(text, bbox) {
   const width = Math.max(1, bbox.x1 - bbox.x0);
   const height = Math.max(1, bbox.y1 - bbox.y0);
 
-  if (/^[|!Il1i\[\]\/\\\-_=.,:;'"`~]+$/.test(clean) && height > width * 1.1) {
+  if (/^[|!Il1i\[\]\/\\\-_=.,:;'"`~]+$/.test(clean) && height > width * 1.15) {
     return true;
   }
   if (/^[|\/\\]{2,}$/.test(clean)) {
@@ -767,11 +721,11 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
   const y1 = Math.min(imgH, Math.ceil(rawBbox.y1));
   const bw = x1 - x0;
   const bh = y1 - y0;
-  if (bw <= 6 || bh <= 6) return rawBbox;
+  if (bw <= 4 || bh <= 4) return rawBbox;
 
   const colCounts = new Uint16Array(bw);
   const rowCounts = new Uint16Array(bh);
-  const inkThreshold = 155;
+  const inkThreshold = 195;
 
   for (let y = y0; y < y1; y += 1) {
     const rOff = y * imgW;
@@ -787,84 +741,30 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
 
   let trimY0 = 0;
   let trimY1 = bh - 1;
-  const maxLineSpan = Math.max(bw * 0.94, 40);
-  while (trimY0 < trimY1 && (rowCounts[trimY0] < 2 || rowCounts[trimY0] > maxLineSpan)) {
+  while (trimY0 < trimY1 && rowCounts[trimY0] < 1) {
     trimY0 += 1;
   }
-  while (trimY1 > trimY0 && (rowCounts[trimY1] < 2 || rowCounts[trimY1] > maxLineSpan)) {
+  while (trimY1 > trimY0 && rowCounts[trimY1] < 1) {
     trimY1 -= 1;
   }
 
-  const activeHeight = Math.max(6, trimY1 - trimY0 + 1);
-  const activeColCounts = new Uint16Array(bw);
-  for (let y = y0 + trimY0; y <= y0 + trimY1; y += 1) {
-    const rOff = y * imgW;
-    for (let x = x0; x < x1; x += 1) {
-      if (cleanGray[rOff + x] < inkThreshold) {
-        activeColCounts[x - x0] += 1;
-      }
-    }
+  let trimX0 = 0;
+  let trimX1 = bw - 1;
+  while (trimX0 < trimX1 && colCounts[trimX0] < 1) {
+    trimX0 += 1;
+  }
+  while (trimX1 > trimX0 && colCounts[trimX1] < 1) {
+    trimX1 -= 1;
   }
 
-  const segments = [];
-  let segStart = -1;
-  let emptyGap = 0;
-  const maxCharGap = Math.max(10, Math.round(activeHeight * 0.95));
-
-  for (let c = 0; c < bw; c += 1) {
-    const hasInk = activeColCounts[c] >= 2;
-    if (hasInk) {
-      if (segStart < 0) {
-        segStart = c;
-      }
-      emptyGap = 0;
-    } else if (segStart >= 0) {
-      emptyGap += 1;
-      if (emptyGap > maxCharGap) {
-        const segEnd = c - emptyGap;
-        if (segEnd - segStart >= 4) {
-          segments.push({ start: segStart, end: segEnd });
-        }
-        segStart = -1;
-        emptyGap = 0;
-      }
-    }
-  }
-  if (segStart >= 0) {
-    const segEnd = bw - 1 - emptyGap;
-    if (segEnd - segStart >= 4) {
-      segments.push({ start: segStart, end: segEnd });
-    }
-  }
-
-  if (segments.length === 0) {
+  if (trimX1 <= trimX0 || trimY1 <= trimY0) {
     return rawBbox;
   }
 
-  let bestSeg = segments[0];
-  if (segments.length > 1) {
-    const expectedWidth = Math.max(16, text.length * activeHeight * 0.62);
-    let bestScore = -Infinity;
-    segments.forEach((seg) => {
-      const segW = seg.end - seg.start + 1;
-      let inkMass = 0;
-      for (let c = seg.start; c <= seg.end; c += 1) {
-        inkMass += activeColCounts[c];
-      }
-      const distFromCenter = Math.abs((seg.start + seg.end) / 2 - bw / 2);
-      const sizeDiff = Math.abs(segW - expectedWidth);
-      const score = inkMass * 2 - sizeDiff * 1.4 - distFromCenter * 0.35;
-      if (score > bestScore) {
-        bestScore = score;
-        bestSeg = seg;
-      }
-    });
-  }
-
   return {
-    x0: Math.max(0, x0 + bestSeg.start - 2),
+    x0: Math.max(0, x0 + trimX0 - 2),
     y0: Math.max(0, y0 + trimY0 - 1),
-    x1: Math.min(imgW, x0 + bestSeg.end + 3),
+    x1: Math.min(imgW, x0 + trimX1 + 3),
     y1: Math.min(imgH, y0 + trimY1 + 2)
   };
 }
@@ -876,21 +776,21 @@ function extractWordsFromTesseractData(data) {
     return data.words;
   }
 
-  if (Array.isArray(data.blocks) && data.blocks.length > 0) {
-    const wordsFromBlocks = [];
+  const collected = [];
+  if (Array.isArray(data.blocks)) {
     data.blocks.forEach((block) => {
       const paragraphs = Array.isArray(block.paragraphs) ? block.paragraphs : [];
       paragraphs.forEach((para) => {
         const lines = Array.isArray(para.lines) ? para.lines : [];
         lines.forEach((line) => {
           const words = Array.isArray(line.words) ? line.words : [];
-          words.forEach((word) => wordsFromBlocks.push(word));
+          words.forEach((word) => collected.push(word));
         });
       });
     });
-    if (wordsFromBlocks.length > 0) {
-      return wordsFromBlocks;
-    }
+  }
+  if (collected.length > 0) {
+    return collected;
   }
 
   if (Array.isArray(data.lines) && data.lines.length > 0) {
@@ -934,8 +834,8 @@ function extractWordsFromTesseractData(data) {
 
 function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
   const invScale = scale > 0 ? 1 / scale : 1;
-  const maxCanvasW = canvas.width * 0.9;
-  const maxCanvasH = canvas.height * 0.16;
+  const maxCanvasW = canvas.width * 0.96;
+  const maxCanvasH = canvas.height * 0.24;
 
   return rawWords
     .filter((w) => {
@@ -945,13 +845,13 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
 
       const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
       const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
-      if (boxW < 4 || boxH < 6 || boxW > maxCanvasW || boxH > maxCanvasH) {
+      if (boxW < 3 || boxH < 4 || boxW > maxCanvasW || boxH > maxCanvasH) {
         return false;
       }
 
-      const conf = typeof w.confidence === "number" ? w.confidence : 0;
-      const isCodeLike = /[A-Za-z0-9]/.test(rawStr) && rawStr.length >= 2;
-      const minConf = isCodeLike ? 18 : 34;
+      const conf = typeof w.confidence === "number" ? w.confidence : 55;
+      const isCodeLike = /[A-Za-z0-9]/.test(rawStr);
+      const minConf = isCodeLike ? 8 : 22;
       return conf >= minConf;
     })
     .map((w) => {
@@ -974,7 +874,7 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
       return {
         type: "word",
         text: rawStr,
-        confidence: typeof w.confidence === "number" ? w.confidence : 50,
+        confidence: typeof w.confidence === "number" ? w.confidence : 55,
         bbox: {
           x0: trimmedCanvasBox.x0 * invScale,
           y0: trimmedCanvasBox.y0 * invScale,
@@ -988,17 +888,34 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
 
 async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
   try {
-    const worker = await withPromiseTimeout(getPersistentOcrWorker(), 4500, null);
+    const worker = await withPromiseTimeout(getPersistentOcrWorker(), 12000, null);
     if (worker) {
       const recognizeRes = await withPromiseTimeout(
         worker.recognize(canvas, {}, { blocks: true, text: true, tsv: true }),
-        9500,
+        15000,
         null
       );
       const data = recognizeRes && recognizeRes.data ? recognizeRes.data : null;
-      return parseRawTesseractWords(
+      const parsed = parseRawTesseractWords(
         extractWordsFromTesseractData(data),
         canvas,
+        scale,
+        cleanGray
+      );
+      if (parsed.length > 0) {
+        return parsed;
+      }
+
+      const binCanvas = buildBinarizedCropCanvas(canvas, 0.92);
+      const retryRes = await withPromiseTimeout(
+        worker.recognize(binCanvas, {}, { blocks: true, text: true, tsv: true }),
+        12000,
+        null
+      );
+      const retryData = retryRes && retryRes.data ? retryRes.data : null;
+      return parseRawTesseractWords(
+        extractWordsFromTesseractData(retryData),
+        binCanvas,
         scale,
         cleanGray
       );
@@ -1009,10 +926,10 @@ async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
         window.Tesseract.recognize(
           canvas,
           "eng",
-          { logger: () => {}, tessedit_pageseg_mode: "11" },
+          { logger: () => {}, tessedit_pageseg_mode: "6" },
           { blocks: true, text: true, tsv: true }
         ),
-        9500,
+        15000,
         null
       );
       const data = fallbackRes && fallbackRes.data ? fallbackRes.data : null;
@@ -1044,7 +961,7 @@ function attachFallbackValuesToBarcodes(barcodeItems, wordItems) {
       .filter((w) => {
         const wMidY = (w.bbox.y0 + w.bbox.y1) / 2;
         const wMidX = (w.bbox.x0 + w.bbox.x1) / 2;
-        const isBelow = wMidY >= b.y1 - 4 && wMidY <= maxSearchY;
+        const isBelow = wMidY >= b.y1 - 2 && wMidY <= maxSearchY;
         const isAlignedX = wMidX >= b.x0 - 60 && wMidX <= b.x1 + 60;
         const isCodeToken = /^[A-Za-z0-9\-_]{4,}$/.test(w.text) && !isLabelPrefixToken(w.text);
         return isBelow && isAlignedX && isCodeToken;
