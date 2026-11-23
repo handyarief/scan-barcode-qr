@@ -157,6 +157,7 @@
       <div id="scanner-viewport" class="scanner-viewport mode-full" onclick="triggerAutoFocus(true)">
         <div id="reader"></div>
         <canvas id="doc-detect-canvas" class="doc-detect-canvas"></canvas>
+        <div id="doc-auto-scan-pill" class="doc-auto-scan-pill">Mencari dokumen...</div>
 
         <!-- Tab Mode Scan di Atas -->
         <div id="scan-top-overlay" class="scan-top-overlay" onclick="event.stopPropagation()">
@@ -238,6 +239,7 @@
 
           <div id="photo-lens-stage" class="photo-lens-stage">
             <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil Foto Dokumen" />
+            <div id="doc-enhance-sweep" class="doc-enhance-sweep"></div>
             <div id="photo-ocr-layer" class="photo-ocr-layer"></div>
 
             <div id="photo-lens-action-bar" class="photo-lens-action-bar">

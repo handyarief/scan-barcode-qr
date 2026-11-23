@@ -96,6 +96,39 @@
   display: block;
 }
 
+/* Animasi Scan Sweep Ala CamScanner Saat Proses Pemutihan "Ajaib Pro" */
+.doc-enhance-sweep {
+  display: none;
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #2dd4bf, #99f6e4, #2dd4bf, transparent);
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.9);
+  z-index: 15;
+  pointer-events: none;
+}
+
+.doc-enhance-sweep.active {
+  display: block;
+  animation: docScanSweepMove 1.15s ease-in-out infinite;
+}
+
+@keyframes docScanSweepMove {
+  0% {
+    top: 12%;
+    opacity: 0.5;
+  }
+  50% {
+    top: 86%;
+    opacity: 1;
+  }
+  100% {
+    top: 12%;
+    opacity: 0.5;
+  }
+}
+
 /* Lapisan Interaktif OCR & Barcode di Atas Foto (Bersih tanpa garis kotak saat belum dipilih) */
 .photo-ocr-layer {
   position: absolute;

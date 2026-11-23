@@ -46,7 +46,7 @@ function isValidDocumentQuadGeometry(quad) {
     const curr = quad[i];
     const next = quad[(i + 1) % 4];
     const ang = quadCornerAngleDeg(prev, curr, next);
-    if (ang < 56 || ang > 124) {
+    if (ang < 54 || ang > 126) {
       return false;
     }
   }
@@ -56,64 +56,17 @@ function isValidDocumentQuadGeometry(quad) {
   const leftH = Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y);
   const rightH = Math.hypot(quad[2].x - quad[1].x, quad[2].y - quad[1].y);
 
-  if (Math.min(topW, botW) < 0.16 || Math.min(leftH, rightH) < 0.14) {
+  if (Math.min(topW, botW) < 0.14 || Math.min(leftH, rightH) < 0.14) {
     return false;
   }
 
   const widthRatio = Math.max(topW, botW) / Math.max(1e-4, Math.min(topW, botW));
   const heightRatio = Math.max(leftH, rightH) / Math.max(1e-4, Math.min(leftH, rightH));
-  if (widthRatio > 1.48 || heightRatio > 1.48) {
+  if (widthRatio > 1.55 || heightRatio > 1.55) {
     return false;
   }
 
   return true;
-}
-
-function computeOtsuLuminanceThreshold(lum, w, h) {
-  const hist = new Uint32Array(256);
-  const x0 = Math.floor(w * 0.06);
-  const x1 = Math.ceil(w * 0.94);
-  const y0 = Math.floor(h * 0.06);
-  const y1 = Math.ceil(h * 0.94);
-  let total = 0;
-
-  for (let y = y0; y < y1; y += 1) {
-    const rOff = y * w;
-    for (let x = x0; x < x1; x += 1) {
-      hist[lum[rOff + x]] += 1;
-      total += 1;
-    }
-  }
-  if (total === 0) return 155;
-
-  let sumAll = 0;
-  for (let i = 0; i < 256; i += 1) {
-    sumAll += i * hist[i];
-  }
-
-  let sumB = 0;
-  let wB = 0;
-  let maxVar = -1;
-  let threshold = 155;
-
-  for (let t = 0; t < 256; t += 1) {
-    wB += hist[t];
-    if (wB === 0) continue;
-    const wF = total - wB;
-    if (wF === 0) break;
-
-    sumB += t * hist[t];
-    const mB = sumB / wB;
-    const mF = (sumAll - sumB) / wF;
-    const diff = mB - mF;
-    const betweenVar = wB * wF * diff * diff;
-    if (betweenVar > maxVar) {
-      maxVar = betweenVar;
-      threshold = t;
-    }
-  }
-
-  return threshold;
 }
 
 function dilateBinaryMask(src, dst, w, h) {
@@ -218,13 +171,13 @@ function intersectLines2D(lineA, lineB) {
 }
 
 function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
-  if (!Array.isArray(boundaryPts) || boundaryPts.length < 24 || !rawQuad || rawQuad.length !== 4) {
+  if (!Array.isArray(boundaryPts) || boundaryPts.length < 20 || !rawQuad || rawQuad.length !== 4) {
     return rawQuad;
   }
 
   const sideBuckets = [[], [], [], []];
   const diagLen = Math.hypot(w, h);
-  const maxDist = Math.max(2.8, diagLen * 0.024);
+  const maxDist = Math.max(3.2, diagLen * 0.028);
 
   for (let i = 0; i < boundaryPts.length; i += 1) {
     const pt = boundaryPts[i];
@@ -240,7 +193,7 @@ function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
       if (lenSq < 1) continue;
 
       const t = ((pt.x - a.x) * abx + (pt.y - a.y) * aby) / lenSq;
-      if (t < 0.16 || t > 0.84) continue;
+      if (t < 0.14 || t > 0.86) continue;
 
       const projX = a.x + t * abx;
       const projY = a.y + t * aby;
@@ -257,7 +210,7 @@ function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
   }
 
   const lines = sideBuckets.map((bucket) =>
-    bucket.length >= 6 ? fitRobustLineToPoints2D(bucket) : null
+    bucket.length >= 5 ? fitRobustLineToPoints2D(bucket) : null
   );
   if (lines.some((l) => !l)) {
     return rawQuad;
@@ -273,7 +226,7 @@ function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
     const rp = refined[i];
     const op = rawQuad[i];
     if (!rp || !Number.isFinite(rp.x) || !Number.isFinite(rp.y)) return rawQuad;
-    if (Math.hypot(rp.x - op.x, rp.y - op.y) > diagLen * 0.065) return rawQuad;
+    if (Math.hypot(rp.x - op.x, rp.y - op.y) > diagLen * 0.075) return rawQuad;
     rp.x = Math.max(0, Math.min(w - 1, rp.x));
     rp.y = Math.max(0, Math.min(h - 1, rp.y));
   }
@@ -291,37 +244,83 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
     const lum = new Uint8Array(totalPixels);
     const sat = new Uint8Array(totalPixels);
 
+    // Hitung statistik tepi/latar luar bingkai untuk deteksi kontras kertas relatif terhadap background
+    let borderLumSum = 0;
+    let borderCount = 0;
+
     for (let i = 0, p = 0; i < imgData.length; i += 4, p += 1) {
       const r = imgData[i];
       const g = imgData[i + 1];
       const b = imgData[i + 2];
       const maxC = r > g ? (r > b ? r : b) : (g > b ? g : b);
       const minC = r < g ? (r < b ? r : b) : (g < b ? g : b);
-      lum[p] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-      sat[p] = maxC - minC;
-    }
+      const lVal = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      const sVal = maxC - minC;
+      lum[p] = lVal;
+      sat[p] = sVal;
 
-    const otsuThresh = computeOtsuLuminanceThreshold(lum, srcW, srcH);
-    // Ambang tinggi + batas saturasi ketat agar karton/kain/meja di luar label tidak ikut tersambung
-    const brightThresh = Math.max(142, Math.min(218, otsuThresh + 12));
-
-    const rawMask = new Uint8Array(totalPixels);
-    for (let p = 0; p < totalPixels; p += 1) {
-      if (lum[p] >= brightThresh && sat[p] <= 48) {
-        rawMask[p] = 1;
+      const py = Math.floor(p / srcW);
+      const px = p - py * srcW;
+      if (px < 10 || px >= srcW - 10 || py < 10 || py >= srcH - 10) {
+        borderLumSum += lVal;
+        borderCount += 1;
       }
     }
 
-    // Erosi ringan dulu untuk memutus jembatan tipis ke latar terang, lalu dilasi & closing untuk menyatukan isi stiker
+    const avgBorderLum = borderCount > 0 ? borderLumSum / borderCount : 115;
+
+    // Hitung rata-rata kecerahan lokal 21x21 menggunakan integral image agar bayangan miring tetap terdeteksi sebagai kertas
+    const integral = new Float64Array((srcW + 1) * (srcH + 1));
+    for (let y = 1; y <= srcH; y += 1) {
+      let rowSum = 0;
+      const rOff = (y - 1) * srcW;
+      const iOff = y * (srcW + 1);
+      const prevIOff = (y - 1) * (srcW + 1);
+      for (let x = 1; x <= srcW; x += 1) {
+        rowSum += lum[rOff + (x - 1)];
+        integral[iOff + x] = integral[prevIOff + x] + rowSum;
+      }
+    }
+
+    const halfWin = 12;
+    const rawMask = new Uint8Array(totalPixels);
+    const globalPaperFloor = Math.max(112, Math.min(185, avgBorderLum + 16));
+
+    for (let y = 0; y < srcH; y += 1) {
+      const y0 = Math.max(0, y - halfWin);
+      const y1 = Math.min(srcH, y + halfWin + 1);
+      const rOff = y * srcW;
+      for (let x = 0; x < srcW; x += 1) {
+        const x0 = Math.max(0, x - halfWin);
+        const x1 = Math.min(srcW, x + halfWin + 1);
+        const areaWin = Math.max(1, (x1 - x0) * (y1 - y0));
+        const localMean =
+          (integral[y1 * (srcW + 1) + x1] -
+            integral[y0 * (srcW + 1) + x1] -
+            integral[y1 * (srcW + 1) + x0] +
+            integral[y0 * (srcW + 1) + x0]) /
+          areaWin;
+
+        const p = rOff + x;
+        const isNeutralPaper = sat[p] <= 66;
+        const isBrightEnough =
+          lum[p] >= globalPaperFloor || (lum[p] >= localMean - 14 && lum[p] >= 108 && sat[p] <= 48);
+
+        if (isNeutralPaper && isBrightEnough) {
+          rawMask[p] = 1;
+        }
+      }
+    }
+
+    // Dilasi dulu untuk menyatukan celah antar label & isi barcode/QR di dalam tumpukan dokumen, lalu erosi untuk merapikan sisi luar
     const bufA = new Uint8Array(totalPixels);
     const bufB = new Uint8Array(totalPixels);
-    erodeBinaryMask(rawMask, bufA, srcW, srcH);
+    dilateBinaryMask(rawMask, bufA, srcW, srcH);
     dilateBinaryMask(bufA, bufB, srcW, srcH);
     dilateBinaryMask(bufB, bufA, srcW, srcH);
-    dilateBinaryMask(bufA, bufB, srcW, srcH);
-    erodeBinaryMask(bufB, bufA, srcW, srcH);
     erodeBinaryMask(bufA, bufB, srcW, srcH);
-    const closedMask = bufB;
+    erodeBinaryMask(bufB, bufA, srcW, srcH);
+    const closedMask = bufA;
 
     const labels = new Int32Array(totalPixels);
     const queue = new Int32Array(totalPixels);
@@ -394,24 +393,24 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
         }
 
         const areaRatio = area / totalPixels;
-        if (areaRatio < 0.07 || areaRatio > 0.88) continue;
+        if (areaRatio < 0.05 || areaRatio > 0.92) continue;
 
         const bboxW = maxX - minX + 1;
         const bboxH = maxY - minY + 1;
         const solidity = area / Math.max(1, bboxW * bboxH);
-        if (solidity < 0.62) continue;
+        if (solidity < 0.52) continue;
 
         let clippedSides = 0;
-        if (topEdgeHits > bboxW * 0.25) clippedSides += 1;
-        if (bottomEdgeHits > bboxW * 0.25) clippedSides += 1;
-        if (leftEdgeHits > bboxH * 0.25) clippedSides += 1;
-        if (rightEdgeHits > bboxH * 0.25) clippedSides += 1;
-        if (clippedSides >= 2) continue;
+        if (topEdgeHits > bboxW * 0.35) clippedSides += 1;
+        if (bottomEdgeHits > bboxW * 0.35) clippedSides += 1;
+        if (leftEdgeHits > bboxH * 0.35) clippedSides += 1;
+        if (rightEdgeHits > bboxH * 0.35) clippedSides += 1;
+        if (clippedSides >= 3) continue;
 
         const cx = sumX / area;
         const cy = sumY / area;
         const centerDistNorm = Math.hypot(cx - frameCenterX, cy - frameCenterY) / maxCenterDist;
-        const score = areaRatio * (solidity * solidity) * (1.45 - 0.55 * centerDistNorm);
+        const score = areaRatio * (0.65 + 0.55 * solidity) * (1.5 - 0.5 * centerDistNorm);
 
         if (score > bestScore) {
           bestScore = score;
@@ -453,7 +452,7 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
       }
     }
 
-    if (boundaryPts.length < 20) return null;
+    if (boundaryPts.length < 16) return null;
 
     const theta = 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
     const cosT = Math.cos(-theta);
@@ -507,14 +506,14 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
     }
     polyArea = Math.abs(polyArea) / 2;
     const polyAreaRatio = polyArea / totalPixels;
-    if (polyAreaRatio < 0.07 || polyAreaRatio > 0.9) {
+    if (polyAreaRatio < 0.05 || polyAreaRatio > 0.93) {
       return null;
     }
 
-    // Inset ringan agar pinggir sobekan/latar luar kertas terpotong bersih
+    // Inset ringan (0.978) agar tepi bergerigi/bayangan latar luar kertas terpotong bersih seperti CamScanner
     const qCx = (refined[0].x + refined[1].x + refined[2].x + refined[3].x) / 4;
     const qCy = (refined[0].y + refined[1].y + refined[2].y + refined[3].y) / 4;
-    const insetFactor = 0.985;
+    const insetFactor = 0.978;
 
     const normQuad = refined.map((pt) => {
       const ix = qCx + (pt.x - qCx) * insetFactor;
@@ -535,6 +534,49 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
   }
 }
 
+function drawRoundedQuadPath(ctx, pts, radiusPx) {
+  if (!Array.isArray(pts) || pts.length !== 4) return;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i += 1) {
+    const prev = pts[(i + 3) % 4];
+    const curr = pts[i];
+    const next = pts[(i + 1) % 4];
+
+    const v1x = prev.x - curr.x;
+    const v1y = prev.y - curr.y;
+    const v2x = next.x - curr.x;
+    const v2y = next.y - curr.y;
+    const len1 = Math.hypot(v1x, v1y);
+    const len2 = Math.hypot(v2x, v2y);
+    const r = Math.min(radiusPx, len1 * 0.25, len2 * 0.25);
+
+    const pStartX = curr.x + (v1x / Math.max(1, len1)) * r;
+    const pStartY = curr.y + (v1y / Math.max(1, len1)) * r;
+    const pEndX = curr.x + (v2x / Math.max(1, len2)) * r;
+    const pEndY = curr.y + (v2y / Math.max(1, len2)) * r;
+
+    if (i === 0) {
+      ctx.moveTo(pStartX, pStartY);
+    } else {
+      ctx.lineTo(pStartX, pStartY);
+    }
+    ctx.quadraticCurveTo(curr.x, curr.y, pEndX, pEndY);
+  }
+  ctx.closePath();
+}
+
+function updateDocAutoScanPill(stateText, isLocked = false, visible = true) {
+  const pillEl = document.getElementById("doc-auto-scan-pill");
+  if (!pillEl) return;
+  if (!visible || !isTextPhotoCameraActive()) {
+    pillEl.classList.remove("active", "locked");
+    return;
+  }
+  pillEl.textContent = stateText;
+  pillEl.classList.add("active");
+  pillEl.classList.toggle("locked", Boolean(isLocked));
+}
+
 function drawDocumentBoundaryOverlay(quad) {
   if (!docDetectCanvas || !scannerViewport) return;
   const rect = scannerViewport.getBoundingClientRect();
@@ -552,7 +594,10 @@ function drawDocumentBoundaryOverlay(quad) {
   if (!ctx) return;
   ctx.clearRect(0, 0, cw, ch);
 
-  if (!quad || quad.length !== 4) return;
+  if (!quad || quad.length !== 4) {
+    updateDocAutoScanPill("Arahkan kamera ke dokumen...", false, true);
+    return;
+  }
 
   const videoEl = document.querySelector("#reader video");
   let offsetX = 0;
@@ -575,29 +620,48 @@ function drawDocumentBoundaryOverlay(quad) {
     y: offsetY + p.y * drawH
   }));
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  ctx.lineTo(pts[1].x, pts[1].y);
-  ctx.lineTo(pts[2].x, pts[2].y);
-  ctx.lineTo(pts[3].x, pts[3].y);
-  ctx.closePath();
+  const isLocked = docStableHits >= 3 || docAutoScanTriggered;
 
-  ctx.fillStyle = "rgba(45, 212, 191, 0.08)";
+  ctx.save();
+  drawRoundedQuadPath(ctx, pts, 14 * dpr);
+  ctx.fillStyle = isLocked ? "rgba(45, 212, 191, 0.14)" : "rgba(45, 212, 191, 0.06)";
   ctx.fill();
 
-  ctx.lineWidth = 2.4 * dpr;
-  ctx.strokeStyle = "#2dd4bf";
+  drawRoundedQuadPath(ctx, pts, 14 * dpr);
+  ctx.lineWidth = (isLocked ? 3.2 : 2.6) * dpr;
+  ctx.strokeStyle = isLocked ? "#5eead4" : "#2dd4bf";
   ctx.lineJoin = "round";
   ctx.stroke();
 
-  pts.forEach((pt) => {
+  // Aksen sudut menonjol ala bingkai auto-detect CamScanner
+  pts.forEach((pt, idx) => {
+    const prev = pts[(idx + 3) % 4];
+    const next = pts[(idx + 1) % 4];
+    const v1x = prev.x - pt.x;
+    const v1y = prev.y - pt.y;
+    const v2x = next.x - pt.x;
+    const v2y = next.y - pt.y;
+    const l1 = Math.max(1, Math.hypot(v1x, v1y));
+    const l2 = Math.max(1, Math.hypot(v2x, v2y));
+    const arm = 18 * dpr;
+
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 4 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = "#5eead4";
-    ctx.fill();
+    ctx.moveTo(pt.x + (v1x / l1) * arm, pt.y + (v1y / l1) * arm);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.lineTo(pt.x + (v2x / l2) * arm, pt.y + (v2y / l2) * arm);
+    ctx.lineWidth = 4 * dpr;
+    ctx.strokeStyle = "#99f6e4";
+    ctx.lineCap = "round";
+    ctx.stroke();
   });
+
   ctx.restore();
+
+  updateDocAutoScanPill(
+    isLocked ? "Dokumen terkunci — memotret otomatis..." : "Dokumen terdeteksi — tahan sebentar",
+    isLocked,
+    true
+  );
 }
 
 function measureQuadDisplacement(quadA, quadB) {
@@ -619,19 +683,19 @@ function updateDocumentAutoScanStability(quad) {
   }
 
   const avgMove = measureQuadDisplacement(docLastStableQuad, quad);
-  if (avgMove <= 0.014) {
+  if (avgMove <= 0.022) {
     docStableHits += 1;
     docLastStableQuad = quad.map((p, idx) => ({
-      x: p.x * 0.5 + docLastStableQuad[idx].x * 0.5,
-      y: p.y * 0.5 + docLastStableQuad[idx].y * 0.5
+      x: p.x * 0.55 + docLastStableQuad[idx].x * 0.45,
+      y: p.y * 0.55 + docLastStableQuad[idx].y * 0.45
     }));
   } else {
     docLastStableQuad = quad.map((p) => ({ ...p }));
     docStableHits = 1;
   }
 
-  // Trigger auto-capture otomatis saat dokumen stabil sekitar ~0.65 detik (7 frame @ 95ms) seperti di video
-  if (docStableHits >= 7) {
+  // Trigger auto-capture otomatis saat dokumen stabil sekitar ~0.55 detik (6 frame @ 90ms)
+  if (docStableHits >= 6) {
     docAutoScanTriggered = true;
     docStableHits = 0;
     lastDetectedDocQuad = docLastStableQuad.map((p) => ({ ...p }));
@@ -648,6 +712,7 @@ function runDocumentBoundaryFrame() {
     (photoLensOverlay && photoLensOverlay.classList.contains("open")) ||
     document.visibilityState !== "visible"
   ) {
+    updateDocAutoScanPill("", false, false);
     return;
   }
 
@@ -658,7 +723,7 @@ function runDocumentBoundaryFrame() {
 
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
-  const maxSample = 240;
+  const maxSample = 280;
   const scale = Math.min(1, maxSample / Math.max(vw, vh));
   const sw = Math.max(40, Math.round(vw * scale));
   const sh = Math.max(40, Math.round(vh * scale));
@@ -683,7 +748,7 @@ function runDocumentBoundaryFrame() {
           Math.hypot(p.x - smoothedDocQuad[idx].x, p.y - smoothedDocQuad[idx].y)
         )
       );
-      const alpha = maxJump > 0.14 ? 0.72 : 0.45;
+      const alpha = maxJump > 0.14 ? 0.72 : 0.48;
       smoothedDocQuad = smoothedDocQuad.map((prev, idx) => ({
         x: prev.x + (detectedQuad[idx].x - prev.x) * alpha,
         y: prev.y + (detectedQuad[idx].y - prev.y) * alpha
@@ -694,7 +759,7 @@ function runDocumentBoundaryFrame() {
   } else {
     docDetectMissCount += 1;
     docStableHits = Math.max(0, docStableHits - 1);
-    if (docDetectMissCount > 3) {
+    if (docDetectMissCount > 4) {
       lastDetectedDocQuad = null;
       smoothedDocQuad = null;
       docLastStableQuad = null;
@@ -712,7 +777,8 @@ function startDocumentBoundaryDetector() {
   if (docDetectCanvas) {
     docDetectCanvas.classList.add("active");
   }
-  docDetectTimer = setInterval(runDocumentBoundaryFrame, 95);
+  updateDocAutoScanPill("Arahkan kamera ke dokumen...", false, true);
+  docDetectTimer = setInterval(runDocumentBoundaryFrame, 90);
 }
 
 function stopDocumentBoundaryDetector() {
@@ -726,6 +792,7 @@ function stopDocumentBoundaryDetector() {
   docStableHits = 0;
   docAutoScanTriggered = false;
   docDetectMissCount = 0;
+  updateDocAutoScanPill("", false, false);
   if (docDetectCanvas) {
     const ctx = docDetectCanvas.getContext("2d");
     if (ctx) {
@@ -1028,7 +1095,7 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
             2 * rawLum[p + w] +
             rawLum[p + w + 1]) >>
           4;
-        if (Math.abs(rawLum[p] - avg) < 18) {
+        if (Math.abs(rawLum[p] - avg) < 22) {
           lum[p] = avg;
         }
       }
@@ -1048,18 +1115,18 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
       }
     }
 
-    const dilateRadius = Math.max(10, Math.round(Math.min(hw, hh) / 28));
-    const erodeRadius = Math.max(5, Math.round(dilateRadius * 0.5));
-    const blurRadius = Math.max(10, Math.round(dilateRadius * 0.85));
+    const dilateRadius = Math.max(12, Math.round(Math.min(hw, hh) / 24));
+    const erodeRadius = Math.max(6, Math.round(dilateRadius * 0.5));
+    const blurRadius = Math.max(10, Math.round(dilateRadius * 0.8));
 
     const dilated = separableMorphOp1D(halfLum, hw, hh, dilateRadius, true);
     const closed = separableMorphOp1D(dilated, hw, hh, erodeRadius, false);
     const smoothBg = separableBoxBlurFloat(closed, hw, hh, blurRadius);
 
-    // Normalisasi latar belakang putih bersih (#FFFFFF) + tinta hitam pekat (#000000) seperti "Ajaib Pro" di video & Gambar 6
+    // Normalisasi latar belakang putih bersih (#FFFFFF) + tinta hitam pekat (#000000) persis "Ajaib Pro" di Gambar 4 & video
     const toneBuf = new Uint8Array(total);
-    const blackPt = 0.62;
-    const whitePt = 0.90;
+    const blackPt = 0.70;
+    const whitePt = 0.93;
     const invRange = 1 / (whitePt - blackPt);
 
     for (let y = 0; y < h; y += 1) {
@@ -1082,7 +1149,7 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
         const b01 = smoothBg[hy1 * hw + hx0];
         const b11 = smoothBg[hy1 * hw + hx1];
         const localBg = Math.max(
-          75,
+          70,
           (b00 * oneMinusWx + b10 * wx) * oneMinusWy + (b01 * oneMinusWx + b11 * wx) * wy
         );
 
@@ -1096,13 +1163,13 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
           outGray = 0;
         } else {
           const t = (ratio - blackPt) * invRange;
-          outGray = Math.round(255 * Math.pow(t, 1.25));
+          outGray = Math.round(255 * Math.pow(t, 1.45));
         }
         toneBuf[p] = outGray;
       }
     }
 
-    // Penajaman tepi tinta halus tanpa menghasilkan bercak pada latar putih
+    // Penajaman tinta halus agar garis barcode, QR & huruf kecil (S/N, P/N, DESC, QTY) tajam hitam pekat
     const sharpBuf = new Uint8Array(toneBuf);
     for (let y = 1; y < h - 1; y += 1) {
       const rOff = y * w;
@@ -1122,21 +1189,21 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
               2 * toneBuf[yNext + x] +
               toneBuf[yNext + x + 1]) >>
             4;
-          const sharpened = center + 0.28 * (center - blur);
+          const sharpened = center + 0.35 * (center - blur);
           sharpBuf[rOff + x] =
-            sharpened >= 250 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
+            sharpened >= 246 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
         }
       }
     }
 
     if (wasCropped) {
-      const pad = Math.max(2, Math.round(Math.min(w, h) * 0.006));
+      const pad = Math.max(3, Math.round(Math.min(w, h) * 0.008));
       for (let y = 0; y < h; y += 1) {
         const rOff = y * w;
         const nearY = y < pad || y >= h - pad;
         for (let x = 0; x < w; x += 1) {
           if (nearY || x < pad || x >= w - pad) {
-            if (sharpBuf[rOff + x] > 180) {
+            if (sharpBuf[rOff + x] > 160) {
               sharpBuf[rOff + x] = 255;
             }
           }

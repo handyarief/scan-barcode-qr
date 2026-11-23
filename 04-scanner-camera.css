@@ -70,6 +70,40 @@
   display: block;
 }
 
+/* Pil Status Auto-Detect Dokumen Ala CamScanner */
+.doc-auto-scan-pill {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  color: #f8fafc;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.doc-auto-scan-pill.active {
+  display: inline-flex;
+}
+
+.doc-auto-scan-pill.locked {
+  background: rgba(13, 148, 136, 0.88);
+  border-color: #99f6e4;
+  color: #ffffff;
+}
+
 /* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
 #reader img[alt="Info icon"],
 #reader__dashboard_section,

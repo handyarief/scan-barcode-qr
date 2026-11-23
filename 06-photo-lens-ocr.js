@@ -5,6 +5,12 @@ function setPhotoLensStatus(msg, hide = false) {
   photoLensStatus.classList.toggle("hidden", Boolean(hide));
 }
 
+function setDocEnhanceSweepActive(active) {
+  const sweepEl = document.getElementById("doc-enhance-sweep");
+  if (!sweepEl) return;
+  sweepEl.classList.toggle("active", Boolean(active));
+}
+
 function clearPhotoLensState() {
   ocrWordItems = [];
   selectedOcrIndices = [];
@@ -14,6 +20,7 @@ function clearPhotoLensState() {
   ocrDragStartIdx = -1;
   ocrDragStartPoint = null;
   ocrDragMoved = false;
+  setDocEnhanceSweepActive(false);
   if (photoOcrLayer) {
     photoOcrLayer.innerHTML = "";
   }
@@ -949,11 +956,19 @@ function sortDetectedItemsReadingOrder(items) {
 async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   const token = ++ocrRunToken;
   clearPhotoLensState();
-  setPhotoLensStatus("Memproses dokumen...", false);
+  setPhotoLensStatus("Memindai & memutihkan dokumen...", false);
+
+  if (capturedPhotoPreview && rawImageUrl) {
+    capturedPhotoPreview.src = rawImageUrl;
+    capturedPhotoPreview.classList.add("has-image");
+    setDocEnhanceSweepActive(true);
+  }
 
   try {
     const processedDataUrl = await processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad);
     if (token !== ocrRunToken) return;
+
+    setDocEnhanceSweepActive(false);
 
     if (capturedPhotoPreview) {
       capturedPhotoPreview.src = processedDataUrl;
@@ -1006,6 +1021,7 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
     }
   } catch (err) {
     if (token !== ocrRunToken) return;
+    setDocEnhanceSweepActive(false);
     setPhotoLensStatus("Gagal memproses foto, ketuk Foto Ulang", false);
   }
 }

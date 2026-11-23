@@ -137,6 +137,29 @@ function copyScanSheetValue() {
       }
     }, 1400);
   }
+
+  // Langsung tutup sheet & lanjutkan kamera untuk scan berikutnya
+  const shouldPopSheetHistory = Boolean(isSheetHistoryPushed && window.history.length > 1);
+  isSheetHistoryPushed = false;
+  closeScanSheetOnly();
+  isScanLocked = false;
+  lastScanned = "";
+  pendingScanData = null;
+  resetCandidateScan();
+  if (activeAppFeature === "scan-to-excel") {
+    currentRoute = "scan-to-excel-scan";
+  } else if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
+    currentRoute = activeAppFeature;
+  }
+  if (shouldPopSheetHistory) {
+    ignoreNextSheetPopState = true;
+    try {
+      window.history.back();
+    } catch (err) {
+      ignoreNextSheetPopState = false;
+    }
+  }
+  resumeCameraForNextScan();
 }
 
 function completeScan() {
@@ -362,7 +385,9 @@ function copyText() {
   if (sheetCopyBtn) {
     sheetCopyBtn.textContent = "Copied";
     setTimeout(() => {
-      sheetCopyBtn.textContent = "Copy";
+      if (sheetCopyBtn) {
+        sheetCopyBtn.textContent = "Copy";
+      }
     }, 1400);
   }
 
