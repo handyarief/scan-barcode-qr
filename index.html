@@ -3,24 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Scan Barcode → QR Code</title>
-
-  <!-- PWA & Mobile App Meta -->
   <meta name="theme-color" content="#0f62fe" />
-  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Scan2QR" />
-  <link id="apple-touch-icon" rel="apple-touch-icon" href="./logo.png" />
-  <link id="pwa-manifest" rel="manifest" href="" />
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="icon" type="image/png" href="./logo.png" />
+  <link rel="apple-touch-icon" href="./logo.png" />
+  <link id="pwa-manifest" rel="manifest" />
+  <title>Scan Barcode ke QR Code</title>
 
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- 8 Modul CSS Terurut Sesuai Cascade -->
+  <link rel="stylesheet" href="./css/01-base-header.css" />
+  <link rel="stylesheet" href="./css/02-home-menu.css" />
+  <link rel="stylesheet" href="./css/03-excel-hub-form.css" />
+  <link rel="stylesheet" href="./css/04-scanner-camera.css" />
+  <link rel="stylesheet" href="./css/05-photo-lens-ocr.css" />
+  <link rel="stylesheet" href="./css/06-scanner-controls.css" />
+  <link rel="stylesheet" href="./css/07-notes-excel-session.css" />
+  <link rel="stylesheet" href="./css/08-sheets-modals.css" />
 </head>
 <body>
   <div class="container">
+    <!-- Header Utama -->
     <header>
       <div class="brand-group">
         <img src="./logo.png" alt="Logo Scan2QR" class="app-logo" />
@@ -30,113 +34,98 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="install-btn" type="button" onclick="installApp()">Install App</button>
+        <button type="button" id="install-btn" onclick="installApp()">Install</button>
       </div>
     </header>
 
-    <!-- Menu Utama Kotak-Kotak Warna-Warni Sebelum Scan -->
-    <main id="home-menu-view" class="home-menu-view" aria-label="Menu Utama Pemindai">
+    <!-- 1. Tampilan Menu Utama -->
+    <main id="home-menu-view" class="home-menu-view">
       <div class="home-menu-grid">
         <button type="button" class="menu-tile-card tile-blue" onclick="openFeatureMenu('1d-to-qr')">
           <div class="tile-icon-box" aria-hidden="true">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
-              <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
-              <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
-              <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
-              <line x1="7" y1="8" x2="7" y2="16"></line>
-              <line x1="10" y1="8" x2="10" y2="16"></line>
-              <line x1="14" y1="8" x2="14" y2="16"></line>
-              <line x1="17" y1="8" x2="17" y2="16"></line>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+              <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+              <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+              <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+              <line x1="7" y1="8" x2="7" y2="16" />
+              <line x1="10" y1="8" x2="10" y2="16" />
+              <line x1="14" y1="8" x2="14" y2="16" />
+              <line x1="17" y1="8" x2="17" y2="16" />
             </svg>
           </div>
-          <span class="tile-title">1D to QR</span>
-          <span class="tile-desc">Scan barcode 1D/2D jadi QR</span>
+          <div class="tile-title">1D to QR</div>
+          <div class="tile-desc">Scan barcode 1D/2D &amp; ubah jadi QR Code</div>
         </button>
 
         <button type="button" class="menu-tile-card tile-green" onclick="openFeatureMenu('scan-to-excel')">
           <div class="tile-icon-box" aria-hidden="true">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="8" y1="13" x2="16" y2="13"></line>
-              <line x1="8" y1="17" x2="16" y2="17"></line>
-              <line x1="12" y1="11" x2="12" y2="19"></line>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="3" y1="15" x2="21" y2="15" />
+              <line x1="9" y1="9" x2="9" y2="21" />
             </svg>
           </div>
-          <span class="tile-title">Scan to Excel</span>
-          <span class="tile-desc">Scan masuk ke file Excel</span>
+          <div class="tile-title">Scan to Excel</div>
+          <div class="tile-desc">Rekap multi-kolom &amp; export file .xlsx</div>
         </button>
 
         <button type="button" class="menu-tile-card tile-purple" onclick="openFeatureMenu('text-to-qr')">
           <div class="tile-icon-box" aria-hidden="true">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-              <circle cx="12" cy="13" r="3.5"></circle>
-              <path d="M8 21h8"></path>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+              <circle cx="12" cy="13" r="3" />
             </svg>
           </div>
-          <span class="tile-title">Text to QR</span>
-          <span class="tile-desc">Hasil scan foto jadi QR</span>
+          <div class="tile-title">Text to QR</div>
+          <div class="tile-desc">Foto teks/SN dokumen &amp; pilih blok menjadi QR</div>
         </button>
       </div>
     </main>
 
-    <!-- Menu Hub Scan to Excel: Tombol + New Task & Daftar Task Berjalan -->
-    <section id="excel-task-hub-view" class="excel-hub-view" style="display: none;" aria-label="Menu Task Scan to Excel">
+    <!-- 2. Hub Scan to Excel -->
+    <section id="excel-task-hub-view" class="excel-hub-view" style="display: none;">
       <button type="button" class="excel-new-task-btn" onclick="openNewExcelTaskForm()">
-        <span class="new-task-plus-icon" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
+        <div class="new-task-plus-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </span>
+        </div>
         <div class="new-task-btn-text">
-          <span class="new-task-btn-title">New Task</span>
-          <span class="new-task-btn-sub">Buat Excel baru &amp; tentukan kolom scan</span>
+          <span class="new-task-btn-title">+ New Task</span>
+          <span class="new-task-btn-sub">Buat file Excel baru &amp; atur nama kolom</span>
         </div>
       </button>
 
       <div class="excel-running-section">
         <div class="excel-running-header">
-          <span class="excel-running-title">Task Berjalan / Belum Selesai</span>
+          <span class="excel-running-title">Task Berjalan</span>
           <span id="excel-running-count" class="excel-count-badge">0 task</span>
         </div>
-        <div id="excel-running-tasks-list" class="excel-running-list">
-          <div class="excel-running-empty">Belum ada task berjalan. Tekan <strong>+ New Task</strong> untuk membuat Excel baru.</div>
-        </div>
+        <div id="excel-running-tasks-list" class="excel-running-list"></div>
       </div>
+
+      <button type="button" class="secondary" onclick="backToMainMenu()">← Kembali ke Menu Utama</button>
     </section>
 
-    <!-- Menu New Excel: Atur Jumlah Kolom, Nama Tiap Kolom & Ceklis Input Kolom -->
-    <section id="excel-new-task-view" class="excel-new-task-view" style="display: none;" aria-label="Buat Excel Baru">
+    <!-- 3. Form New Excel -->
+    <section id="excel-new-task-view" class="excel-new-task-view" style="display: none;">
       <div class="card new-excel-card">
-        <h2 class="new-excel-card-title">New Excel</h2>
+        <div class="new-excel-card-title">Pengaturan Excel Baru</div>
 
         <div class="form-group">
-          <label for="new-excel-task-name" class="form-label">Nama Task / File Excel</label>
-          <input
-            type="text"
-            id="new-excel-task-name"
-            class="form-text-input"
-            placeholder="Contoh: Scan SN Perangkat"
-            autocomplete="off"
-          />
+          <label for="new-excel-task-name" class="form-label">Nama File / Task</label>
+          <input type="text" id="new-excel-task-name" class="form-text-input" placeholder="Contoh: Stok_Gudang_A" autocomplete="off" />
         </div>
 
         <div class="form-group">
-          <label for="new-excel-col-count" class="form-label">Mau Buat Berapa Kolom?</label>
+          <label for="new-excel-col-count" class="form-label">Jumlah Kolom (1 - 20)</label>
           <div class="col-count-stepper">
-            <button type="button" class="stepper-btn" onclick="adjustNewExcelColumnCount(-1)" aria-label="Kurangi jumlah kolom">−</button>
-            <input
-              type="number"
-              id="new-excel-col-count"
-              min="1"
-              max="20"
-              value="1"
-              oninput="handleNewExcelColumnCountInput()"
-            />
-            <button type="button" class="stepper-btn" onclick="adjustNewExcelColumnCount(1)" aria-label="Tambah jumlah kolom">+</button>
+            <button type="button" class="stepper-btn" onclick="adjustNewExcelColumnCount(-1)">−</button>
+            <input type="number" id="new-excel-col-count" min="1" max="20" value="1" oninput="handleNewExcelColumnCountInput()" />
+            <button type="button" class="stepper-btn" onclick="adjustNewExcelColumnCount(1)">+</button>
           </div>
         </div>
 
@@ -146,188 +135,139 @@
         </div>
 
         <div id="new-excel-seq-wrapper" class="seq-checkbox-card disabled">
-          <label class="seq-checkbox-label" for="new-excel-seq-checkbox">
+          <label for="new-excel-seq-checkbox" class="seq-checkbox-label">
             <input type="checkbox" id="new-excel-seq-checkbox" disabled />
-            <span class="seq-checkbox-custom" aria-hidden="true"></span>
+            <span class="seq-checkbox-custom"></span>
             <div class="seq-checkbox-text">
-              <span class="seq-checkbox-title">Input Kolom</span>
-              <span id="new-excel-seq-hint" class="seq-checkbox-desc">Aktif saat lebih dari 1 kolom: scan otomatis berurutan Kolom 1 → 2 → 3 sampai habis lalu kembali ke Kolom 1</span>
+              <span class="seq-checkbox-title">Input Kolom Berurutan Otomatis</span>
+              <span id="new-excel-seq-hint" class="seq-checkbox-desc">Aktif saat jumlah kolom &gt; 1. Scan ke-1 mengisi Kolom 1, scan ke-2 mengisi Kolom 2 pada baris yang sama.</span>
             </div>
           </label>
         </div>
 
         <div class="new-excel-form-actions">
-          <button type="button" class="secondary" onclick="navigateBackOneStep()">Batal</button>
-          <button type="button" onclick="createAndStartExcelTask()">Mulai Scan</button>
+          <button type="button" class="secondary" onclick="openExcelTaskHubView()">Batal</button>
+          <button type="button" onclick="createAndStartExcelTask()">Mulai Scan →</button>
         </div>
       </div>
     </section>
 
-    <!-- Area Kamera & Kontrol Pemindai -->
-    <div id="scanner-card" class="card scanner-card" style="display: none;">
-      <div id="scanner-viewport" class="scanner-viewport mode-full" title="Ketuk layar kamera untuk fokus ulang">
+    <!-- 4. Area Kamera & Pemindai -->
+    <section id="scanner-card" class="card scanner-card" style="display: none;">
+      <div id="scanner-viewport" class="scanner-viewport mode-full" onclick="triggerAutoFocus(true)">
         <div id="reader"></div>
+        <canvas id="doc-detect-canvas" class="doc-detect-canvas"></canvas>
 
-        <!-- Canvas Auto-Detect Tepi Dokumen Ala CamScanner -->
-        <canvas id="doc-detect-canvas" class="doc-detect-canvas" aria-hidden="true"></canvas>
-
-        <!-- Bar Atas: 3 Mode Scan (Full, Square, Bar) -->
-        <div id="scan-top-overlay" class="scan-top-overlay">
-          <div class="scan-mode-tabs" role="tablist" aria-label="Mode Area Scan">
-            <button type="button" class="mode-tab active" data-mode="full" onclick="setScanMode('full')">Full</button>
-            <button type="button" class="mode-tab" data-mode="square" onclick="setScanMode('square')">Square</button>
-            <button type="button" class="mode-tab" data-mode="bar" onclick="setScanMode('bar')">Bar</button>
+        <!-- Tab Mode Scan di Atas -->
+        <div id="scan-top-overlay" class="scan-top-overlay" onclick="event.stopPropagation()">
+          <div class="scan-mode-tabs">
+            <button type="button" id="mode-full" class="mode-tab active" onclick="setScanMode('full')">Full</button>
+            <button type="button" id="mode-square" class="mode-tab" onclick="setScanMode('square')">Square</button>
+            <button type="button" id="mode-bar" class="mode-tab" onclick="setScanMode('bar')">Bar</button>
           </div>
           <div id="scan-instruction" class="scan-instruction"></div>
         </div>
 
-        <!-- Panduan Visual Area Scan -->
+        <!-- Panduan Bingkai Scan -->
         <div id="scan-guide" class="scan-guide">
           <span class="guide-corner corner-tl"></span>
           <span class="guide-corner corner-tr"></span>
           <span class="guide-corner corner-bl"></span>
           <span class="guide-corner corner-br"></span>
+          <div class="scan-laser"></div>
+        </div>
+        <div id="auto-zoom-badge" class="auto-zoom-badge"></div>
+
+        <!-- Toast Cepat Saat Scan Masuk Excel -->
+        <div id="excel-scan-toast" class="excel-scan-toast"></div>
+
+        <!-- Bar Kontrol Kamera Bawah -->
+        <div class="scan-bottom-controls" onclick="event.stopPropagation()">
+          <button type="button" id="flash-btn" class="icon-circle-btn" onclick="toggleFlash()" title="Flash / Senter" aria-label="Flash">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          </button>
+
+          <button type="button" id="zoom-toggle-btn" class="icon-circle-btn" onclick="toggleZoomPanel()" title="Zoom Kamera" aria-label="Zoom">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="11" y1="8" x2="11" y2="14" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+
+          <button type="button" id="photo-shutter-btn" class="photo-shutter-circle-btn" onclick="triggerPhotoCapture()" title="Foto Teks / Dokumen" aria-label="Foto Teks">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+              <circle cx="12" cy="13" r="3" />
+            </svg>
+          </button>
+
+          <button type="button" id="gallery-photo-btn" class="icon-circle-btn" onclick="triggerGalleryPhotoPick()" title="Pilih Foto dari Galeri" aria-label="Galeri Foto" style="display: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          </button>
+
+          <button type="button" id="keyboard-toggle-btn" class="icon-circle-btn" onclick="toggleKeyboardPanel()" title="Input Manual" aria-label="Ketik Manual">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+              <line x1="6" y1="8" x2="6" y2="8" />
+              <line x1="10" y1="8" x2="10" y2="8" />
+              <line x1="14" y1="8" x2="14" y2="8" />
+              <line x1="18" y1="8" x2="18" y2="8" />
+              <line x1="6" y1="12" x2="6" y2="12" />
+              <line x1="10" y1="12" x2="10" y2="12" />
+              <line x1="14" y1="12" x2="14" y2="12" />
+              <line x1="18" y1="12" x2="18" y2="12" />
+              <line x1="7" y1="16" x2="17" y2="16" />
+            </svg>
+          </button>
         </div>
 
-        <!-- Notifikasi Cepat Scan to Excel -->
-        <div id="excel-scan-toast" class="excel-scan-toast" aria-live="polite"></div>
-
-        <!-- Overlay Foto Lens: Tampil Foto Penuh + Blok Biru Transparan + Menu Mengambang Salin & Buat Barkode -->
-        <div id="photo-lens-overlay" class="photo-lens-overlay" aria-live="polite">
+        <!-- Overlay Photo Lens (Auto-Crop + OCR Seleksi Blok) -->
+        <div id="photo-lens-overlay" class="photo-lens-overlay" onclick="event.stopPropagation()">
           <div class="photo-lens-top-controls">
             <button type="button" class="lens-top-pill-btn" onclick="retakePhotoOnly()">Foto Ulang</button>
-            <button type="button" class="lens-action-close" onclick="closePhotoLensPanel()" aria-label="Kembali ke scan">✕</button>
+            <button type="button" class="lens-action-close" onclick="closePhotoLensPanel()" aria-label="Tutup Foto">✕</button>
           </div>
 
           <div id="photo-lens-stage" class="photo-lens-stage">
-            <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil foto kode" />
+            <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil Foto Dokumen" />
             <div id="photo-ocr-layer" class="photo-ocr-layer"></div>
 
-            <!-- Menu Kapsul Mengambang di Samping Blok Biru Terpilih -->
-            <div id="photo-lens-action-bar" class="photo-lens-action-bar" role="toolbar" aria-label="Aksi teks terpilih">
+            <div id="photo-lens-action-bar" class="photo-lens-action-bar">
               <button type="button" class="lens-action-btn" onclick="copyPhotoText()">Salin</button>
-              <span class="lens-action-divider" aria-hidden="true"></span>
-              <button id="lens-create-qr-btn" type="button" class="lens-action-btn primary" onclick="createBarcodeFromPhotoText()">Buat Barkode</button>
+              <span class="lens-action-divider"></span>
+              <button type="button" id="lens-create-qr-btn" class="lens-action-btn primary" onclick="createBarcodeFromPhotoText()">Buat Barkode</button>
             </div>
-
-            <div id="photo-lens-status" class="photo-lens-status">Mendeteksi angka &amp; huruf...</div>
           </div>
+
+          <div id="photo-lens-status" class="photo-lens-status">Memproses dokumen...</div>
         </div>
-
-        <!-- Bar Bawah: Ikon Kontrol Kamera -->
-        <div class="scan-bottom-controls">
-          <button
-            id="flash-btn"
-            type="button"
-            class="icon-circle-btn"
-            onclick="toggleFlash()"
-            disabled
-            aria-label="Lampu Flash"
-            title="Lampu Flash"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M7 2h10v3l-2 3v12a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V8L7 5V2zm5 9a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
-            </svg>
-          </button>
-
-          <button
-            id="zoom-toggle-btn"
-            type="button"
-            class="icon-circle-btn"
-            onclick="toggleZoomPanel()"
-            aria-label="Pengaturan Zoom"
-            title="Zoom Kamera"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="7"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              <line x1="11" y1="8" x2="11" y2="14"></line>
-              <line x1="8" y1="11" x2="14" y2="11"></line>
-            </svg>
-          </button>
-
-          <button
-            id="photo-shutter-btn"
-            type="button"
-            class="photo-shutter-circle-btn"
-            onclick="triggerPhotoCapture()"
-            aria-label="Ambil Foto Angka atau Huruf"
-            title="Ambil Foto untuk Pilih Angka/Huruf"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-              <circle cx="12" cy="13" r="4"></circle>
-            </svg>
-          </button>
-
-          <button
-            id="gallery-photo-btn"
-            type="button"
-            class="icon-circle-btn"
-            onclick="triggerGalleryPhotoPick()"
-            style="display: none;"
-            aria-label="Pilih Foto dari Galeri"
-            title="Pilih Foto dari Galeri"
-          >
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <circle cx="8.5" cy="8.5" r="1.5"></circle>
-              <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-          </button>
-
-          <button
-            id="keyboard-toggle-btn"
-            type="button"
-            class="icon-circle-btn"
-            onclick="toggleManualPanel()"
-            aria-label="Ketik Manual"
-            title="Ketik Manual / Scanner Fisik"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm1 3v2h2V8H5zm3 0v2h2V8H8zm3 0v2h2V8h-2zm3 0v2h2V8h-2zm3 0v2h2V8h-2zM5 11v2h2v-2H5zm3 0v2h2v-2H8zm3 0v2h2v-2h-2zm3 0v2h2v-2h-2zm3 0v2h2v-2h-2zM7 14v2h10v-2H7z"/>
-            </svg>
-          </button>
-        </div>
-
-        <input
-          type="file"
-          id="photo-capture-input"
-          accept="image/*"
-          capture="environment"
-          style="display: none;"
-        />
-        <input
-          type="file"
-          id="photo-gallery-input"
-          accept="image/*"
-          style="display: none;"
-        />
       </div>
 
-      <!-- Panel Slider Zoom (Muncul saat ikon Zoom ditekan) -->
+      <!-- Slider Zoom -->
       <div id="zoom-box" class="zoom-control">
-        <span>Zoom:</span>
+        <span>Zoom</span>
         <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" />
         <span id="zoom-value">1.0x</span>
-        <button type="button" id="auto-zoom-btn" class="mini-pill-btn active" onclick="toggleAutoZoom()">Auto</button>
+        <button type="button" id="auto-zoom-btn" class="mini-pill-btn" onclick="toggleAutoZoom()">Auto</button>
       </div>
+      <span id="flash-status">Flash OFF</span>
 
-      <div id="flash-status">Menyiapkan kamera &amp; lampu flash...</div>
-
-      <!-- Panel Input Manual / Scanner Fisik (Muncul saat ikon Keyboard ditekan atau saat scanner fisik mengetik) -->
+      <!-- Input Manual -->
       <div id="manual-panel" class="manual-input">
-        <input
-          type="text"
-          id="scanner-input"
-          placeholder="Ketik manual atau tembak scanner fisik..."
-          autocomplete="off"
-        />
-        <button id="manual-submit-btn" type="button" onclick="handleManualSubmit()">Buat QR</button>
+        <input type="text" id="scanner-input" placeholder="Ketik atau tempel kode barcode..." autocomplete="off" />
+        <button type="button" id="manual-submit-btn" onclick="handleManualSubmit()">Buat QR</button>
       </div>
 
-      <!-- Panel Notes Hasil Scan (Muncul hanya saat menu 1D to QR aktif) -->
-      <section id="qr-scan-notes-panel" class="qr-notes-panel" style="display: none;" aria-live="polite">
+      <!-- Panel Notes Hasil Scan (Menu 1D to QR) -->
+      <div id="qr-scan-notes-panel" class="qr-notes-panel" style="display: none;">
         <div class="qr-notes-header">
           <div class="qr-notes-title-wrap">
             <span class="qr-notes-title">Notes Hasil Scan</span>
@@ -336,116 +276,105 @@
           <div class="qr-notes-actions">
             <button type="button" id="qr-copy-all-btn" class="qr-notes-btn primary" onclick="copyAllQrNotes()" disabled>Salin Semua</button>
             <button type="button" id="qr-copy-selected-btn" class="qr-notes-btn secondary-blue" onclick="copySelectedQrNotes()" disabled>Salin Pilihan</button>
-            <button type="button" id="qr-clear-notes-btn" class="qr-notes-btn danger" onclick="clearAllQrNotes()" disabled title="Hapus semua notes">Hapus</button>
+            <button type="button" id="qr-clear-notes-btn" class="qr-notes-btn danger" onclick="clearAllQrNotes()" disabled>Hapus</button>
           </div>
         </div>
-        <div id="qr-notes-feedback" class="qr-notes-feedback" aria-live="polite"></div>
-        <div id="qr-notes-list" class="qr-notes-list">
-          <div class="qr-notes-empty">Belum ada hasil scan. Hasil scan akan muncul berurutan ke bawah di sini.</div>
-        </div>
-      </section>
+        <div id="qr-notes-feedback" class="qr-notes-feedback"></div>
+        <div id="qr-notes-list" class="qr-notes-list"></div>
+      </div>
 
-      <!-- Panel Sesi Scan to Excel (Muncul hanya saat menu Scan to Excel aktif) -->
-      <section id="excel-session-panel" class="excel-session-panel" style="display: none;" aria-live="polite">
+      <!-- Panel Sesi Tabel Scan to Excel -->
+      <div id="excel-session-panel" class="excel-session-panel" style="display: none;">
         <div class="excel-panel-header">
           <div class="excel-panel-title-wrap">
-            <span id="excel-active-task-name" class="excel-panel-title">Data Scan Excel</span>
+            <span id="excel-active-task-name" class="excel-panel-title">Excel Task</span>
             <span id="excel-row-count" class="excel-count-badge">0 baris</span>
           </div>
           <div class="excel-panel-actions">
-            <button type="button" id="excel-finish-task-btn" class="excel-finish-btn" onclick="markCurrentExcelTaskCompleted()">Selesai</button>
-            <button type="button" id="excel-download-btn" class="excel-export-btn" onclick="exportScannedListToExcel()" disabled>Excel</button>
+            <button type="button" class="excel-finish-btn" onclick="markCurrentExcelTaskCompleted()">Selesai</button>
+            <button type="button" id="excel-download-btn" class="excel-export-btn" onclick="exportScannedListToExcel()" disabled>Download .xlsx</button>
           </div>
         </div>
-
         <div id="excel-target-col-bar" class="excel-target-col-bar"></div>
-
         <div class="excel-table-wrap">
           <table class="excel-table">
-            <thead id="excel-rows-thead">
-              <tr>
-                <th>No</th>
-                <th>Kolom 1</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="excel-rows-tbody">
-              <tr class="excel-empty-row">
-                <td colspan="3">Belum ada data. Arahkan kamera ke barcode/QR untuk mulai mencatat.</td>
-              </tr>
-            </tbody>
+            <thead id="excel-rows-thead"></thead>
+            <tbody id="excel-rows-tbody"></tbody>
           </table>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 
-  <!-- Bottom Sheet Hasil Scan (Muncul dari bawah saat tertangkap scan) -->
+  <!-- Input File Tersembunyi untuk Kamera Foto & Galeri -->
+  <input type="file" id="photo-capture-input" accept="image/*" capture="environment" style="display: none;" />
+  <input type="file" id="photo-gallery-input" accept="image/*" style="display: none;" />
+
+  <!-- Bottom Sheet Hasil Scan -->
   <div id="scan-sheet-backdrop" class="sheet-backdrop" onclick="dismissScanSheet()"></div>
-  <section id="scan-result-sheet" class="scan-result-sheet" aria-live="polite">
-    <div id="sheet-drag-handle" class="sheet-drag-area" title="Swipe ke bawah atau ketuk panah untuk menutup">
-      <button type="button" id="sheet-dismiss-btn" class="sheet-arrow-btn" onclick="dismissScanSheet()" aria-label="Tutup hasil scan">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="18 15 12 9 6 15"></polyline>
+  <div id="scan-result-sheet" class="scan-result-sheet" role="dialog" aria-modal="true">
+    <div id="sheet-drag-handle" class="sheet-drag-area">
+      <button type="button" class="sheet-arrow-btn" onclick="dismissScanSheet()" aria-label="Tutup Hasil Scan">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
     </div>
 
     <div class="sheet-header-row">
-      <span id="sheet-scanned-count" class="sheet-count-title">Scanned</span>
-      <button type="button" id="completed-btn" class="completed-btn" onclick="completeScan()">Completed</button>
+      <span id="sheet-scanned-count" class="sheet-count-title">Scanned 1 items</span>
+      <button type="button" class="completed-btn" onclick="completeScan()">Completed</button>
     </div>
 
     <div class="sheet-detail-card">
       <div class="sheet-detail-row">
-        <span class="sheet-label">Barcode:</span>
+        <span class="sheet-label">Value</span>
         <span id="sheet-barcode-value" class="sheet-value">-</span>
       </div>
       <div class="sheet-detail-row">
-        <span class="sheet-label">Format:</span>
+        <span class="sheet-label">Format</span>
         <span id="sheet-format-value" class="sheet-value">-</span>
       </div>
       <div id="sheet-excel-col-row" class="sheet-detail-row" style="display: none;">
-        <span class="sheet-label">Kolom:</span>
+        <span class="sheet-label">Target</span>
         <span id="sheet-excel-col-value" class="sheet-value">-</span>
       </div>
       <div class="sheet-detail-row sheet-copy-row">
-        <button type="button" id="sheet-copy-btn" class="sheet-copy-btn" onclick="copyText()">Salin Teks</button>
-        <span id="status-badge" class="badge" style="display: none;">Menunggu Scan...</span>
+        <span class="sheet-label">Action</span>
+        <button type="button" id="sheet-copy-btn" class="sheet-copy-btn" onclick="copyScanSheetValue()">Copy</button>
       </div>
     </div>
-  </section>
+  </div>
 
-  <!-- Tampilan Kode QR Kotak Full Screen (Muncul dari bawah setelah klik Completed) -->
-  <section id="fullscreen-qr-modal" class="fullscreen-qr-modal" aria-hidden="true">
+  <!-- Modal QR Code Full Screen -->
+  <div id="fullscreen-qr-modal" class="fullscreen-qr-modal" aria-hidden="true">
     <div class="fullscreen-qr-header">
       <div>
-        <h2>Kode QR Hasil Scan</h2>
-        <div id="format-info">Format: -</div>
+        <h2>Hasil QR Code</h2>
+        <p id="format-info">Format Asli: -</p>
       </div>
-      <button type="button" class="close-fullscreen-btn" onclick="resetScan()" aria-label="Tutup Full Screen">✕</button>
+      <button type="button" class="close-fullscreen-btn" onclick="resetScan()" aria-label="Tutup QR Code">✕</button>
     </div>
 
     <div class="fullscreen-qr-body">
-      <div id="qrcode-wrapper" class="fullscreen-qr-box">
-        <span style="color:#8d8d8d; font-size:0.85rem;">QR Code akan muncul di sini</span>
-      </div>
+      <div id="qrcode-wrapper" class="fullscreen-qr-box"></div>
       <div id="decoded-text">-</div>
+      <span id="status-badge" class="badge ready">QR Siap</span>
     </div>
 
-    <div class="actions fullscreen-actions">
+    <div class="actions">
       <button type="button" class="secondary" onclick="copyText()">Salin Teks</button>
-      <button type="button" class="secondary" onclick="downloadQR()">Simpan QR</button>
-      <button type="button" onclick="resetScan()">Scan Baru</button>
+      <button type="button" onclick="downloadQR()">Simpan PNG</button>
+      <button type="button" class="secondary" onclick="resetScan()">Scan Lagi</button>
     </div>
-  </section>
+  </div>
 
   <!-- Modal Preview Excel Hasil Scan -->
-  <section id="excel-preview-modal" class="excel-preview-modal" aria-hidden="true">
+  <div id="excel-preview-modal" class="excel-preview-modal" aria-hidden="true">
     <div class="excel-preview-header">
       <div class="excel-preview-title-group">
         <h2 id="excel-preview-title">Preview Excel</h2>
-        <div id="excel-preview-subtitle" class="excel-preview-subtitle">0 Kolom • 0 baris</div>
+        <p id="excel-preview-subtitle" class="excel-preview-subtitle">0 Kolom • 0 baris</p>
       </div>
       <button type="button" class="close-fullscreen-btn" onclick="closeExcelTaskPreview()" aria-label="Tutup Preview">✕</button>
     </div>
@@ -461,10 +390,25 @@
 
     <div class="excel-preview-actions">
       <button type="button" class="secondary" onclick="closeExcelTaskPreview()">Tutup</button>
-      <button type="button" id="excel-preview-download-btn" class="excel-preview-dl-btn" onclick="downloadPreviewedExcelTask()">Download Excel</button>
+      <button type="button" id="excel-preview-download-btn" class="excel-preview-dl-btn" onclick="downloadPreviewedExcelTask()">Download .xlsx</button>
     </div>
-  </section>
+  </div>
 
-  <script src="./script.js"></script>
+  <!-- Library Eksternal -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- 10 Modul JavaScript Terurut Sesuai Dependensi Global -->
+  <script src="./js/01-core-state.js"></script>
+  <script src="./js/02-pwa-storage.js"></script>
+  <script src="./js/03-navigation-menu.js"></script>
+  <script src="./js/04-excel-tasks-hub.js"></script>
+  <script src="./js/05-document-scan-crop.js"></script>
+  <script src="./js/06-photo-lens-ocr.js"></script>
+  <script src="./js/07-qr-notes.js"></script>
+  <script src="./js/08-excel-session-export.js"></script>
+  <script src="./js/09-scan-sheet-qr-modal.js"></script>
+  <script src="./js/10-camera-scanner.js"></script>
 </body>
 </html>
