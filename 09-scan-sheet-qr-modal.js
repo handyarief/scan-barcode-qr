@@ -118,6 +118,27 @@ function dismissScanSheet(fromBack = false) {
   resumeCameraForNextScan();
 }
 
+function copyScanSheetValue() {
+  const activeCode = (pendingScanData && pendingScanData.text) || lastScanned;
+  if (!activeCode) return;
+
+  writeTextToClipboardSafe(activeCode);
+
+  if (activeAppFeature === "1d-to-qr") {
+    addQrScanNote(activeCode);
+    showQrNotesFeedback("Hasil scan disalin & masuk ke Notes!", false);
+  }
+
+  if (sheetCopyBtn) {
+    sheetCopyBtn.textContent = "Copied";
+    setTimeout(() => {
+      if (sheetCopyBtn) {
+        sheetCopyBtn.textContent = "Copy";
+      }
+    }, 1400);
+  }
+}
+
 function completeScan() {
   const activeCode = (pendingScanData && pendingScanData.text) || lastScanned;
   if (!activeCode) return;
@@ -241,14 +262,7 @@ function generateQR(text, formatName = "Scan") {
   decodedTextEl.textContent = cleanText;
   formatInfoEl.textContent = `Format terbaca: ${formatName}`;
 
-  if (activeAppFeature === "1d-to-qr") {
-    addQrScanNote(cleanText);
-    if (statusBadge) {
-      statusBadge.style.display = "none";
-      statusBadge.textContent = "";
-      statusBadge.classList.remove("ready");
-    }
-  } else if (activeAppFeature === "scan-to-excel") {
+  if (activeAppFeature === "scan-to-excel") {
     if (statusBadge) {
       statusBadge.style.display = "inline-block";
       statusBadge.textContent = "Siap Masuk Excel";
@@ -346,9 +360,9 @@ function copyText() {
   writeTextToClipboardSafe(lastScanned);
 
   if (sheetCopyBtn) {
-    sheetCopyBtn.textContent = "Tersalin!";
+    sheetCopyBtn.textContent = "Copied";
     setTimeout(() => {
-      sheetCopyBtn.textContent = "Salin Teks";
+      sheetCopyBtn.textContent = "Copy";
     }, 1400);
   }
 

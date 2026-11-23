@@ -30,7 +30,7 @@ function openPhotoLensPanel() {
   if (!photoLensOverlay || !photoShutterBtn) return;
   const wasOpen = photoLensOverlay.classList.contains("open");
   photoLensOverlay.classList.add("open");
-  photoShutterBtn.classList.add("active");
+  photoShutterBtn.classList.remove("active");
   stopDocumentBoundaryDetector();
   pauseCameraForSingleScan();
   if (!wasOpen) {
@@ -952,7 +952,6 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   setPhotoLensStatus("Memproses dokumen...", false);
 
   try {
-    // Auto-crop + filter bersih putih murni (#FFFFFF) & teks/kode hitam pekat seperti Gambar 3
     const processedDataUrl = await processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad);
     if (token !== ocrRunToken) return;
 
@@ -969,7 +968,6 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
 
     const { canvas: enhancedCanvas, scale, cleanGray } = buildEnhancedCanvasForOcr(img);
 
-    // Tahap 1: Deteksi area barcode secara senyap di latar belakang
     const nativeBarcodes = await detectBarcodeBoxesWithNativeDetector(img);
     if (token !== ocrRunToken) return;
 
@@ -987,7 +985,6 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
       renderOcrWordBoxes();
     }
 
-    // Tahap 2: Deteksi huruf & angka tanpa menutupi gambar dengan blok biru massal
     const tesseractWords = await detectWordBoxesWithTesseract(enhancedCanvas, scale, cleanGray);
     if (token !== ocrRunToken) return;
 
@@ -1386,6 +1383,7 @@ function triggerPhotoCapture() {
     return;
   }
 
+  docAutoScanTriggered = true;
   const capturedQuad = lastDetectedDocQuad ? lastDetectedDocQuad.map((p) => ({ ...p })) : null;
   clearPhotoLensState();
   const snapDataUrl = captureSnapshotFromVideo();

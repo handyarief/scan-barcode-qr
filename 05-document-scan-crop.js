@@ -1,4 +1,4 @@
-// 6B. Engine Auto-Detect & Auto-Crop Dokumen Presisi Ala CamScanner ("Ajaib Pro")
+// 6B. Engine Auto-Detect, Auto-Scan & Auto-Crop Dokumen Presisi Ala CamScanner ("Ajaib Pro")
 function orderQuadCorners(pts) {
   if (!Array.isArray(pts) || pts.length !== 4) return null;
   const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
@@ -26,12 +26,55 @@ function orderQuadCorners(pts) {
   ];
 }
 
+function quadCornerAngleDeg(prevPt, cornerPt, nextPt) {
+  const v1x = prevPt.x - cornerPt.x;
+  const v1y = prevPt.y - cornerPt.y;
+  const v2x = nextPt.x - cornerPt.x;
+  const v2y = nextPt.y - cornerPt.y;
+  const n1 = Math.hypot(v1x, v1y);
+  const n2 = Math.hypot(v2x, v2y);
+  if (n1 < 1e-5 || n2 < 1e-5) return 0;
+  const cosVal = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (n1 * n2)));
+  return (Math.acos(cosVal) * 180) / Math.PI;
+}
+
+function isValidDocumentQuadGeometry(quad) {
+  if (!Array.isArray(quad) || quad.length !== 4) return false;
+
+  for (let i = 0; i < 4; i += 1) {
+    const prev = quad[(i + 3) % 4];
+    const curr = quad[i];
+    const next = quad[(i + 1) % 4];
+    const ang = quadCornerAngleDeg(prev, curr, next);
+    if (ang < 56 || ang > 124) {
+      return false;
+    }
+  }
+
+  const topW = Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y);
+  const botW = Math.hypot(quad[2].x - quad[3].x, quad[2].y - quad[3].y);
+  const leftH = Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y);
+  const rightH = Math.hypot(quad[2].x - quad[1].x, quad[2].y - quad[1].y);
+
+  if (Math.min(topW, botW) < 0.16 || Math.min(leftH, rightH) < 0.14) {
+    return false;
+  }
+
+  const widthRatio = Math.max(topW, botW) / Math.max(1e-4, Math.min(topW, botW));
+  const heightRatio = Math.max(leftH, rightH) / Math.max(1e-4, Math.min(leftH, rightH));
+  if (widthRatio > 1.48 || heightRatio > 1.48) {
+    return false;
+  }
+
+  return true;
+}
+
 function computeOtsuLuminanceThreshold(lum, w, h) {
   const hist = new Uint32Array(256);
-  const x0 = Math.floor(w * 0.05);
-  const x1 = Math.ceil(w * 0.95);
-  const y0 = Math.floor(h * 0.05);
-  const y1 = Math.ceil(h * 0.95);
+  const x0 = Math.floor(w * 0.06);
+  const x1 = Math.ceil(w * 0.94);
+  const y0 = Math.floor(h * 0.06);
+  const y1 = Math.ceil(h * 0.94);
   let total = 0;
 
   for (let y = y0; y < y1; y += 1) {
@@ -41,7 +84,7 @@ function computeOtsuLuminanceThreshold(lum, w, h) {
       total += 1;
     }
   }
-  if (total === 0) return 145;
+  if (total === 0) return 155;
 
   let sumAll = 0;
   for (let i = 0; i < 256; i += 1) {
@@ -51,7 +94,7 @@ function computeOtsuLuminanceThreshold(lum, w, h) {
   let sumB = 0;
   let wB = 0;
   let maxVar = -1;
-  let threshold = 145;
+  let threshold = 155;
 
   for (let t = 0; t < 256; t += 1) {
     wB += hist[t];
@@ -160,8 +203,7 @@ function fitRobustLineToPoints2D(points) {
   }));
   residuals.sort((a, b) => a.err - b.err);
 
-  // Buang 25% titik terluar (sobekan pinggir stiker / bayangan tepi) agar sisi potong lurus sempurna
-  const keepCount = Math.max(6, Math.floor(residuals.length * 0.75));
+  const keepCount = Math.max(6, Math.floor(residuals.length * 0.72));
   const inliers = residuals.slice(0, keepCount).map((r) => r.pt);
   return fitLineToPoints2D(inliers) || initial;
 }
@@ -182,7 +224,7 @@ function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
 
   const sideBuckets = [[], [], [], []];
   const diagLen = Math.hypot(w, h);
-  const maxDist = Math.max(3.5, diagLen * 0.032);
+  const maxDist = Math.max(2.8, diagLen * 0.024);
 
   for (let i = 0; i < boundaryPts.length; i += 1) {
     const pt = boundaryPts[i];
@@ -198,7 +240,7 @@ function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
       if (lenSq < 1) continue;
 
       const t = ((pt.x - a.x) * abx + (pt.y - a.y) * aby) / lenSq;
-      if (t < 0.14 || t > 0.86) continue;
+      if (t < 0.16 || t > 0.84) continue;
 
       const projX = a.x + t * abx;
       const projY = a.y + t * aby;
@@ -231,12 +273,12 @@ function refineQuadWithEdgeLines(boundaryPts, rawQuad, w, h) {
     const rp = refined[i];
     const op = rawQuad[i];
     if (!rp || !Number.isFinite(rp.x) || !Number.isFinite(rp.y)) return rawQuad;
-    if (Math.hypot(rp.x - op.x, rp.y - op.y) > diagLen * 0.08) return rawQuad;
+    if (Math.hypot(rp.x - op.x, rp.y - op.y) > diagLen * 0.065) return rawQuad;
     rp.x = Math.max(0, Math.min(w - 1, rp.x));
     rp.y = Math.max(0, Math.min(h - 1, rp.y));
   }
 
-  return refined;
+  return isValidDocumentQuadGeometry(refined) ? refined : rawQuad;
 }
 
 function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
@@ -260,18 +302,22 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
     }
 
     const otsuThresh = computeOtsuLuminanceThreshold(lum, srcW, srcH);
-    const brightThresh = Math.max(106, Math.min(214, otsuThresh + 4));
+    // Ambang tinggi + batas saturasi ketat agar karton/kain/meja di luar label tidak ikut tersambung
+    const brightThresh = Math.max(142, Math.min(218, otsuThresh + 12));
 
     const rawMask = new Uint8Array(totalPixels);
     for (let p = 0; p < totalPixels; p += 1) {
-      if (lum[p] >= brightThresh && sat[p] <= 80) {
+      if (lum[p] >= brightThresh && sat[p] <= 48) {
         rawMask[p] = 1;
       }
     }
 
+    // Erosi ringan dulu untuk memutus jembatan tipis ke latar terang, lalu dilasi & closing untuk menyatukan isi stiker
     const bufA = new Uint8Array(totalPixels);
     const bufB = new Uint8Array(totalPixels);
-    dilateBinaryMask(rawMask, bufA, srcW, srcH);
+    erodeBinaryMask(rawMask, bufA, srcW, srcH);
+    dilateBinaryMask(bufA, bufB, srcW, srcH);
+    dilateBinaryMask(bufB, bufA, srcW, srcH);
     dilateBinaryMask(bufA, bufB, srcW, srcH);
     erodeBinaryMask(bufB, bufA, srcW, srcH);
     erodeBinaryMask(bufA, bufB, srcW, srcH);
@@ -280,7 +326,7 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
     const labels = new Int32Array(totalPixels);
     const queue = new Int32Array(totalPixels);
     let currentLabel = 0;
-    let bestComponent = null;
+    let bestCandidate = null;
     let bestScore = -1;
 
     const frameCenterX = srcW * 0.5;
@@ -348,45 +394,45 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
         }
 
         const areaRatio = area / totalPixels;
-        if (areaRatio < 0.065 || areaRatio > 0.91) continue;
+        if (areaRatio < 0.07 || areaRatio > 0.88) continue;
 
         const bboxW = maxX - minX + 1;
         const bboxH = maxY - minY + 1;
         const solidity = area / Math.max(1, bboxW * bboxH);
-        if (solidity < 0.52) continue;
+        if (solidity < 0.62) continue;
 
         let clippedSides = 0;
-        if (topEdgeHits > bboxW * 0.35) clippedSides += 1;
-        if (bottomEdgeHits > bboxW * 0.35) clippedSides += 1;
-        if (leftEdgeHits > bboxH * 0.35) clippedSides += 1;
-        if (rightEdgeHits > bboxH * 0.35) clippedSides += 1;
-        if (clippedSides >= 3) continue;
+        if (topEdgeHits > bboxW * 0.25) clippedSides += 1;
+        if (bottomEdgeHits > bboxW * 0.25) clippedSides += 1;
+        if (leftEdgeHits > bboxH * 0.25) clippedSides += 1;
+        if (rightEdgeHits > bboxH * 0.25) clippedSides += 1;
+        if (clippedSides >= 2) continue;
 
         const cx = sumX / area;
         const cy = sumY / area;
         const centerDistNorm = Math.hypot(cx - frameCenterX, cy - frameCenterY) / maxCenterDist;
-        const score = areaRatio * solidity * (1.4 - 0.55 * centerDistNorm);
+        const score = areaRatio * (solidity * solidity) * (1.45 - 0.55 * centerDistNorm);
 
         if (score > bestScore) {
           bestScore = score;
-          bestComponent = { label: currentLabel, area, cx, cy };
+          bestCandidate = { label: currentLabel, area, cx, cy, minX, maxX, minY, maxY };
         }
       }
     }
 
-    if (!bestComponent) return null;
+    if (!bestCandidate) return null;
 
-    const winLabel = bestComponent.label;
-    const cx = bestComponent.cx;
-    const cy = bestComponent.cy;
+    const winLabel = bestCandidate.label;
+    const cx = bestCandidate.cx;
+    const cy = bestCandidate.cy;
     let mu20 = 0;
     let mu02 = 0;
     let mu11 = 0;
     const boundaryPts = [];
 
-    for (let y = 1; y < srcH - 1; y += 1) {
+    for (let y = Math.max(1, bestCandidate.minY - 1); y < Math.min(srcH - 1, bestCandidate.maxY + 2); y += 1) {
       const rOff = y * srcW;
-      for (let x = 1; x < srcW - 1; x += 1) {
+      for (let x = Math.max(1, bestCandidate.minX - 1); x < Math.min(srcW - 1, bestCandidate.maxX + 2); x += 1) {
         const idx = rOff + x;
         if (labels[idx] !== winLabel) continue;
 
@@ -407,7 +453,7 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
       }
     }
 
-    if (boundaryPts.length < 16) return null;
+    if (boundaryPts.length < 20) return null;
 
     const theta = 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
     const cosT = Math.cos(-theta);
@@ -461,14 +507,14 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
     }
     polyArea = Math.abs(polyArea) / 2;
     const polyAreaRatio = polyArea / totalPixels;
-    if (polyAreaRatio < 0.065 || polyAreaRatio > 0.93) {
+    if (polyAreaRatio < 0.07 || polyAreaRatio > 0.9) {
       return null;
     }
 
-    // Inset aman ke dalam batas kertas putih agar pinggiran meja gelap & sobekan luar terpotong bersih seperti Gambar 3
+    // Inset ringan agar pinggir sobekan/latar luar kertas terpotong bersih
     const qCx = (refined[0].x + refined[1].x + refined[2].x + refined[3].x) / 4;
     const qCy = (refined[0].y + refined[1].y + refined[2].y + refined[3].y) / 4;
-    const insetFactor = 0.974;
+    const insetFactor = 0.985;
 
     const normQuad = refined.map((pt) => {
       const ix = qCx + (pt.x - qCx) * insetFactor;
@@ -479,15 +525,7 @@ function detectDocumentQuadFromCanvas(srcCanvas, srcW, srcH) {
       };
     });
 
-    const topWidth = Math.hypot(normQuad[1].x - normQuad[0].x, normQuad[1].y - normQuad[0].y);
-    const bottomWidth = Math.hypot(normQuad[2].x - normQuad[3].x, normQuad[2].y - normQuad[3].y);
-    const leftHeight = Math.hypot(normQuad[3].x - normQuad[0].x, normQuad[3].y - normQuad[0].y);
-    const rightHeight = Math.hypot(normQuad[2].x - normQuad[1].x, normQuad[2].y - normQuad[1].y);
-
-    if (
-      Math.min(topWidth, bottomWidth) < 0.18 ||
-      Math.min(leftHeight, rightHeight) < 0.14
-    ) {
+    if (!isValidDocumentQuadGeometry(normQuad)) {
       return null;
     }
 
@@ -545,27 +583,68 @@ function drawDocumentBoundaryOverlay(quad) {
   ctx.lineTo(pts[3].x, pts[3].y);
   ctx.closePath();
 
-  ctx.fillStyle = "rgba(16, 185, 129, 0.09)";
+  ctx.fillStyle = "rgba(45, 212, 191, 0.08)";
   ctx.fill();
 
-  ctx.lineWidth = 2.6 * dpr;
-  ctx.strokeStyle = "#10b981";
+  ctx.lineWidth = 2.4 * dpr;
+  ctx.strokeStyle = "#2dd4bf";
   ctx.lineJoin = "round";
   ctx.stroke();
 
   pts.forEach((pt) => {
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 4.2 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = "#34d399";
+    ctx.arc(pt.x, pt.y, 4 * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = "#5eead4";
     ctx.fill();
   });
   ctx.restore();
+}
+
+function measureQuadDisplacement(quadA, quadB) {
+  if (!quadA || !quadB || quadA.length !== 4 || quadB.length !== 4) return Infinity;
+  let sumDist = 0;
+  for (let i = 0; i < 4; i += 1) {
+    sumDist += Math.hypot(quadA[i].x - quadB[i].x, quadA[i].y - quadB[i].y);
+  }
+  return sumDist / 4;
+}
+
+function updateDocumentAutoScanStability(quad) {
+  if (!quad || docAutoScanTriggered) return;
+
+  if (!docLastStableQuad) {
+    docLastStableQuad = quad.map((p) => ({ ...p }));
+    docStableHits = 1;
+    return;
+  }
+
+  const avgMove = measureQuadDisplacement(docLastStableQuad, quad);
+  if (avgMove <= 0.014) {
+    docStableHits += 1;
+    docLastStableQuad = quad.map((p, idx) => ({
+      x: p.x * 0.5 + docLastStableQuad[idx].x * 0.5,
+      y: p.y * 0.5 + docLastStableQuad[idx].y * 0.5
+    }));
+  } else {
+    docLastStableQuad = quad.map((p) => ({ ...p }));
+    docStableHits = 1;
+  }
+
+  // Trigger auto-capture otomatis saat dokumen stabil sekitar ~0.65 detik (7 frame @ 95ms) seperti di video
+  if (docStableHits >= 7) {
+    docAutoScanTriggered = true;
+    docStableHits = 0;
+    lastDetectedDocQuad = docLastStableQuad.map((p) => ({ ...p }));
+    triggerScanFeedback();
+    triggerPhotoCapture();
+  }
 }
 
 function runDocumentBoundaryFrame() {
   if (
     !isTextPhotoCameraActive() ||
     !isCameraRunning ||
+    docAutoScanTriggered ||
     (photoLensOverlay && photoLensOverlay.classList.contains("open")) ||
     document.visibilityState !== "visible"
   ) {
@@ -604,18 +683,22 @@ function runDocumentBoundaryFrame() {
           Math.hypot(p.x - smoothedDocQuad[idx].x, p.y - smoothedDocQuad[idx].y)
         )
       );
-      const alpha = maxJump > 0.14 ? 0.72 : 0.42;
+      const alpha = maxJump > 0.14 ? 0.72 : 0.45;
       smoothedDocQuad = smoothedDocQuad.map((prev, idx) => ({
         x: prev.x + (detectedQuad[idx].x - prev.x) * alpha,
         y: prev.y + (detectedQuad[idx].y - prev.y) * alpha
       }));
     }
     drawDocumentBoundaryOverlay(smoothedDocQuad);
+    updateDocumentAutoScanStability(detectedQuad);
   } else {
     docDetectMissCount += 1;
+    docStableHits = Math.max(0, docStableHits - 1);
     if (docDetectMissCount > 3) {
       lastDetectedDocQuad = null;
       smoothedDocQuad = null;
+      docLastStableQuad = null;
+      docStableHits = 0;
       drawDocumentBoundaryOverlay(null);
     }
   }
@@ -623,6 +706,9 @@ function runDocumentBoundaryFrame() {
 
 function startDocumentBoundaryDetector() {
   stopDocumentBoundaryDetector();
+  docAutoScanTriggered = false;
+  docStableHits = 0;
+  docLastStableQuad = null;
   if (docDetectCanvas) {
     docDetectCanvas.classList.add("active");
   }
@@ -636,6 +722,9 @@ function stopDocumentBoundaryDetector() {
   }
   lastDetectedDocQuad = null;
   smoothedDocQuad = null;
+  docLastStableQuad = null;
+  docStableHits = 0;
+  docAutoScanTriggered = false;
   docDetectMissCount = 0;
   if (docDetectCanvas) {
     const ctx = docDetectCanvas.getContext("2d");
@@ -812,7 +901,6 @@ function separableMorphOp1D(src, w, h, radius, isMax) {
   const dst = new Uint8Array(w * h);
   const deque = new Int32Array(Math.max(w, h) + 4);
 
-  // Horizontal pass
   for (let y = 0; y < h; y += 1) {
     const rOff = y * w;
     let head = 0;
@@ -838,7 +926,6 @@ function separableMorphOp1D(src, w, h, radius, isMax) {
     }
   }
 
-  // Vertical pass
   for (let x = 0; x < w; x += 1) {
     let head = 0;
     let tail = 0;
@@ -907,71 +994,6 @@ function separableBoxBlurFloat(src, w, h, radius) {
   return dst;
 }
 
-function cleanWarpedDocumentBorders(toneBuf, w, h) {
-  // Bersihkan sisa bayangan/bingkai gelap yang menempel pada tepi terluar hasil auto-crop
-  const maxBorderDepthX = Math.max(12, Math.round(w * 0.045));
-  const maxBorderDepthY = Math.max(12, Math.round(h * 0.045));
-  const visited = new Uint8Array(w * h);
-  const queue = new Int32Array(w * h);
-  let qHead = 0;
-  let qTail = 0;
-
-  const trySeed = (x, y) => {
-    const idx = y * w + x;
-    if (!visited[idx] && toneBuf[idx] < 238) {
-      visited[idx] = 1;
-      queue[qTail++] = idx;
-    }
-  };
-
-  for (let x = 0; x < w; x += 1) {
-    trySeed(x, 0);
-    trySeed(x, 1);
-    trySeed(x, h - 1);
-    trySeed(x, h - 2);
-  }
-  for (let y = 0; y < h; y += 1) {
-    trySeed(0, y);
-    trySeed(1, y);
-    trySeed(w - 1, y);
-    trySeed(w - 2, y);
-  }
-
-  while (qHead < qTail) {
-    const idx = queue[qHead++];
-    const py = Math.floor(idx / w);
-    const px = idx - py * w;
-    toneBuf[idx] = 255;
-
-    if (px > 0 && px - 1 < maxBorderDepthX && !visited[idx - 1] && toneBuf[idx - 1] < 238) {
-      visited[idx - 1] = 1;
-      queue[qTail++] = idx - 1;
-    }
-    if (
-      px < w - 1 &&
-      w - 1 - (px + 1) < maxBorderDepthX &&
-      !visited[idx + 1] &&
-      toneBuf[idx + 1] < 238
-    ) {
-      visited[idx + 1] = 1;
-      queue[qTail++] = idx + 1;
-    }
-    if (py > 0 && py - 1 < maxBorderDepthY && !visited[idx - w] && toneBuf[idx - w] < 238) {
-      visited[idx - w] = 1;
-      queue[qTail++] = idx - w;
-    }
-    if (
-      py < h - 1 &&
-      h - 1 - (py + 1) < maxBorderDepthY &&
-      !visited[idx + w] &&
-      toneBuf[idx + w] < 238
-    ) {
-      visited[idx + w] = 1;
-      queue[qTail++] = idx + w;
-    }
-  }
-}
-
 function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
   const ctx = canvas.getContext("2d");
   if (!ctx || !canvas.width || !canvas.height) return;
@@ -984,41 +1006,37 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
     const total = w * h;
     const rawLum = new Uint8Array(total);
 
-    // 1. Ekstraksi luminance monokrom bersih tanpa bias warna
     for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-      rawLum[p] = Math.round(0.26 * data[i] + 0.59 * data[i + 1] + 0.15 * data[i + 2]);
+      rawLum[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     }
 
-    // 2. Denoising 3x3 ringan pada area kertas agar bintik kamera hilang tanpa menumpulkan huruf mikro
+    // Smoothing ringan 3x3 untuk meredam butiran kamera tanpa mengaburkan detail huruf/barcode
     const lum = new Uint8Array(total);
     lum.set(rawLum);
     for (let y = 1; y < h - 1; y += 1) {
       const rOff = y * w;
       for (let x = 1; x < w - 1; x += 1) {
         const p = rOff + x;
-        const c = rawLum[p];
-        if (c > 110) {
-          const avg =
-            (rawLum[p - w - 1] +
-              2 * rawLum[p - w] +
-              rawLum[p - w + 1] +
-              2 * rawLum[p - 1] +
-              4 * c +
-              2 * rawLum[p + 1] +
-              rawLum[p + w - 1] +
-              2 * rawLum[p + w] +
-              rawLum[p + w + 1]) >>
-            4;
-          if (Math.abs(c - avg) < 22) {
-            lum[p] = avg;
-          }
+        const avg =
+          (rawLum[p - w - 1] +
+            2 * rawLum[p - w] +
+            rawLum[p - w + 1] +
+            2 * rawLum[p - 1] +
+            4 * rawLum[p] +
+            2 * rawLum[p + 1] +
+            rawLum[p + w - 1] +
+            2 * rawLum[p + w] +
+            rawLum[p + w + 1]) >>
+          4;
+        if (Math.abs(rawLum[p] - avg) < 18) {
+          lum[p] = avg;
         }
       }
     }
 
-    // 3. Peta pencahayaan kertas (Morphological Closing + Blur) untuk menghapus bayangan/lipatan abu-abu 100%
-    const hw = Math.max(20, Math.ceil(w / 2));
-    const hh = Math.max(20, Math.ceil(h / 2));
+    // Estimasi latar belakang lokal menggunakan morphological closing + blur halus agar bayangan & lipatan kertas memutih merata
+    const hw = Math.max(24, Math.ceil(w / 2));
+    const hh = Math.max(24, Math.ceil(h / 2));
     const halfLum = new Uint8Array(hw * hh);
     for (let hy = 0; hy < hh; hy += 1) {
       const sy = Math.min(h - 1, hy * 2);
@@ -1030,18 +1048,18 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
       }
     }
 
-    const dilateRadius = Math.max(12, Math.round(Math.min(hw, hh) / 26));
-    const erodeRadius = Math.max(4, Math.round(dilateRadius * 0.35));
-    const blurRadius = Math.max(8, Math.round(dilateRadius * 0.65));
+    const dilateRadius = Math.max(10, Math.round(Math.min(hw, hh) / 28));
+    const erodeRadius = Math.max(5, Math.round(dilateRadius * 0.5));
+    const blurRadius = Math.max(10, Math.round(dilateRadius * 0.85));
 
     const dilated = separableMorphOp1D(halfLum, hw, hh, dilateRadius, true);
     const closed = separableMorphOp1D(dilated, hw, hh, erodeRadius, false);
     const smoothBg = separableBoxBlurFloat(closed, hw, hh, blurRadius);
 
-    // 4. Flat-Field Division + Kurva Kontras "Ajaib Pro" (Kertas #FFFFFF murni, teks/barcode/QR hitam pekat)
+    // Normalisasi latar belakang putih bersih (#FFFFFF) + tinta hitam pekat (#000000) seperti "Ajaib Pro" di video & Gambar 6
     const toneBuf = new Uint8Array(total);
-    const blackPt = 0.54;
-    const whitePt = 0.84;
+    const blackPt = 0.62;
+    const whitePt = 0.90;
     const invRange = 1 / (whitePt - blackPt);
 
     for (let y = 0; y < h; y += 1) {
@@ -1063,28 +1081,28 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
         const b10 = smoothBg[hy0 * hw + hx1];
         const b01 = smoothBg[hy1 * hw + hx0];
         const b11 = smoothBg[hy1 * hw + hx1];
-        const localIllum =
-          (b00 * oneMinusWx + b10 * wx) * oneMinusWy +
-          (b01 * oneMinusWx + b11 * wx) * wy;
+        const localBg = Math.max(
+          75,
+          (b00 * oneMinusWx + b10 * wx) * oneMinusWy + (b01 * oneMinusWx + b11 * wx) * wy
+        );
 
         const p = rOff + x;
-        const ratio = lum[p] / Math.max(68, localIllum);
+        const ratio = lum[p] / localBg;
 
         let outGray;
         if (ratio >= whitePt) {
           outGray = 255;
         } else if (ratio <= blackPt) {
-          outGray = Math.max(0, Math.round((ratio / blackPt) * 10));
+          outGray = 0;
         } else {
           const t = (ratio - blackPt) * invRange;
-          const curved = Math.pow(t, 1.38);
-          outGray = Math.round(10 + 245 * curved);
+          outGray = Math.round(255 * Math.pow(t, 1.25));
         }
         toneBuf[p] = outGray;
       }
     }
 
-    // 5. Penajaman tepi anti-aliased tanpa mengikis huruf kecil (S/N, P/N, DESC, QTY)
+    // Penajaman tepi tinta halus tanpa menghasilkan bercak pada latar putih
     const sharpBuf = new Uint8Array(toneBuf);
     for (let y = 1; y < h - 1; y += 1) {
       const rOff = y * w;
@@ -1092,7 +1110,7 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
       const yNext = rOff + w;
       for (let x = 1; x < w - 1; x += 1) {
         const center = toneBuf[rOff + x];
-        if (center > 12 && center < 242) {
+        if (center > 0 && center < 252) {
           const blur =
             (toneBuf[yPrev + x - 1] +
               2 * toneBuf[yPrev + x] +
@@ -1104,15 +1122,26 @@ function applyCamScannerDocumentFilter(canvas, wasCropped = false) {
               2 * toneBuf[yNext + x] +
               toneBuf[yNext + x + 1]) >>
             4;
-          const sharpened = center + 0.34 * (center - blur);
+          const sharpened = center + 0.28 * (center - blur);
           sharpBuf[rOff + x] =
-            sharpened >= 246 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
+            sharpened >= 250 ? 255 : Math.max(0, Math.min(255, Math.round(sharpened)));
         }
       }
     }
 
     if (wasCropped) {
-      cleanWarpedDocumentBorders(sharpBuf, w, h);
+      const pad = Math.max(2, Math.round(Math.min(w, h) * 0.006));
+      for (let y = 0; y < h; y += 1) {
+        const rOff = y * w;
+        const nearY = y < pad || y >= h - pad;
+        for (let x = 0; x < w; x += 1) {
+          if (nearY || x < pad || x >= w - pad) {
+            if (sharpBuf[rOff + x] > 180) {
+              sharpBuf[rOff + x] = 255;
+            }
+          }
+        }
+      }
     }
 
     for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
@@ -1150,7 +1179,7 @@ async function processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad = 
 
   let outputCanvas = null;
   let wasCropped = false;
-  if (quadToUse) {
+  if (quadToUse && isValidDocumentQuadGeometry(quadToUse)) {
     outputCanvas = warpDocumentQuadToCanvas(img, quadToUse);
     if (outputCanvas) {
       wasCropped = true;

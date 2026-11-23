@@ -101,11 +101,14 @@ let excelToastTimer = null;
 let isExcelTextPhotoMode = false;
 let excelPhotoHistoryDepth = 0;
 
-// State Auto-Detect & Auto-Crop Dokumen Ala CamScanner
+// State Auto-Detect, Auto-Scan & Auto-Crop Dokumen Ala CamScanner
 let docDetectTimer = null;
 let lastDetectedDocQuad = null;
 let smoothedDocQuad = null;
 let docDetectMissCount = 0;
+let docStableHits = 0;
+let docLastStableQuad = null;
+let docAutoScanTriggered = false;
 
 // State Notes Hasil Scan untuk 1D to QR
 let qrScanNotes = []; // [{ id, text, checked }]
