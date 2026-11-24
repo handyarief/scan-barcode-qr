@@ -152,7 +152,7 @@ function captureSnapshotFromVideo() {
 
 async function captureHighResPhotoFromCamera() {
   if (typeof triggerAutoFocus === "function") {
-    await withPromiseTimeout(triggerAutoFocus(false), 360, null).catch(() => {});
+    await withPromiseTimeout(triggerAutoFocus(false), 320, null).catch(() => {});
   }
 
   // Utamakan snapshot langsung dari frame video aktif agar koordinat 4 sisi sesuai 100% dengan preview
@@ -1089,34 +1089,13 @@ function sortDetectedItemsReadingOrder(items) {
   });
 }
 
-// Memetakan koordinat 4 sudut dari ruang frame <video> ke gambar foto yang diambil
+// Koordinat quad sudah ternormalisasi (0..1) relatif terhadap dimensi frame video (vw x vh)
 function mapViewportQuadToImageQuad(viewportQuad, photoDataUrl) {
   if (!Array.isArray(viewportQuad) || viewportQuad.length !== 4 || !photoDataUrl) return null;
-  const videoEl = document.querySelector("#reader video");
-  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
-    return viewportQuad;
-  }
-
-  const vw = videoEl.videoWidth;
-  const vh = videoEl.videoHeight;
-  const vpRect = scannerViewport ? scannerViewport.getBoundingClientRect() : null;
-  if (!vpRect || !vpRect.width || !vpRect.height) return viewportQuad;
-
-  const cw = vpRect.width;
-  const ch = vpRect.height;
-  const coverScale = Math.max(cw / vw, ch / vh);
-  const dispW = vw * coverScale;
-  const dispH = vh * coverScale;
-  const offX = (cw - dispW) / 2;
-  const offY = (ch - dispH) / 2;
-
-  return viewportQuad.map((p) => {
-    const vxPx = p.x * dispW + offX;
-    const vyPx = p.y * dispH + offY;
-    const normX = Math.max(0.01, Math.min(0.99, vxPx / cw));
-    const normY = Math.max(0.01, Math.min(0.99, vyPx / ch));
-    return { x: normX, y: normY };
-  });
+  return viewportQuad.map((p) => ({
+    x: Math.max(0.01, Math.min(0.99, Number(p.x) || 0)),
+    y: Math.max(0.01, Math.min(0.99, Number(p.y) || 0))
+  }));
 }
 
 async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
@@ -1561,13 +1540,15 @@ function retakePhotoOnly() {
   }
 }
 
-async function triggerPhotoCapture() {
+async function triggerPhotoCapture(isAutoTriggered = false) {
   if (activeAppFeature === "scan-to-excel" && !isExcelTextPhotoMode) {
     enterExcelTextPhotoMode();
     return;
   }
 
-  docAutoScanTriggered = true;
+  if (!isAutoTriggered) {
+    docAutoScanTriggered = true;
+  }
   const capturedQuad =
     isDocCameraFocused && lastDetectedDocQuad
       ? lastDetectedDocQuad.map((p) => ({ ...p }))
@@ -1575,7 +1556,10 @@ async function triggerPhotoCapture() {
 
   clearPhotoLensState();
   openPhotoLensPanel();
-  setPhotoLensStatus("Auto-fokus & mengambil foto...", false);
+  setPhotoLensStatus(
+    isAutoTriggered ? "Dokumen terkunci, memproses auto-crop..." : "Auto-fokus & mengambil foto...",
+    false
+  );
 
   const snapDataUrl = await captureHighResPhotoFromCamera();
   if (snapDataUrl) {
