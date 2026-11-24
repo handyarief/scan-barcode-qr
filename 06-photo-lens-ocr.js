@@ -1102,6 +1102,40 @@ function sortDetectedItemsReadingOrder(items) {
   });
 }
 
+function mapViewportQuadToImageQuad(viewportQuad, photoDataUrl) {
+  if (!Array.isArray(viewportQuad) || viewportQuad.length !== 4) return null;
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return viewportQuad;
+  }
+
+  // Jika foto diambil via ImageCapture dengan rasio berbeda dari <video>, biarkan auto-crop menganalisis gambar asli
+  if (photoDataUrl && typeof window.ImageCapture !== "undefined") {
+    return null;
+  }
+
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  const vpRect = scannerViewport ? scannerViewport.getBoundingClientRect() : null;
+  if (!vpRect || !vpRect.width || !vpRect.height) return viewportQuad;
+
+  const cw = vpRect.width;
+  const ch = vpRect.height;
+  const coverScale = Math.max(cw / vw, ch / vh);
+  const dispW = vw * coverScale;
+  const dispH = vh * coverScale;
+  const offX = (cw - dispW) / 2;
+  const offY = (ch - dispH) / 2;
+
+  return viewportQuad.map((p) => {
+    const vxPx = p.x * dispW + offX;
+    const vyPx = p.y * dispH + offY;
+    const normX = Math.max(0.005, Math.min(0.995, vxPx / cw));
+    const normY = Math.max(0.005, Math.min(0.995, vyPx / ch));
+    return { x: normX, y: normY };
+  });
+}
+
 async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   const token = ++ocrRunToken;
   clearPhotoLensState();
@@ -1114,7 +1148,8 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   }
 
   try {
-    const processedDataUrl = await processDocumentAutoCropAndEnhance(rawImageUrl, preDetectedQuad);
+    const mappedQuad = mapViewportQuadToImageQuad(preDetectedQuad, rawImageUrl);
+    const processedDataUrl = await processDocumentAutoCropAndEnhance(rawImageUrl, mappedQuad);
     if (token !== ocrRunToken) return;
 
     setDocEnhanceSweepActive(false);
