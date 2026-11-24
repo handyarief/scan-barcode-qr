@@ -1,4 +1,4 @@
-// 7. Engine Foto Lens: Auto-Crop CamScanner + Deteksi Barcode/QR & Huruf/Angka Akurat
+// 7. Engine Foto Lens: Auto-Fokus -> Auto-Crop Tegak Berdiri -> Filter Jernih -> Deteksi Barcode & OCR Akurat
 let ocrPreloadPromise = null;
 
 function setPhotoLensStatus(msg, hide = false) {
@@ -152,7 +152,13 @@ function captureSnapshotFromVideo() {
 
 async function captureHighResPhotoFromCamera() {
   if (typeof triggerAutoFocus === "function") {
-    await withPromiseTimeout(triggerAutoFocus(false), 320, null).catch(() => {});
+    await withPromiseTimeout(triggerAutoFocus(false), 360, null).catch(() => {});
+  }
+
+  // Utamakan snapshot langsung dari frame video aktif agar koordinat 4 sisi sesuai 100% dengan preview
+  const videoSnap = captureSnapshotFromVideo();
+  if (videoSnap) {
+    return videoSnap;
   }
 
   try {
@@ -181,7 +187,7 @@ async function captureHighResPhotoFromCamera() {
     }
   } catch (err) {}
 
-  return captureSnapshotFromVideo();
+  return "";
 }
 
 function loadImageElement(imageUrl) {
@@ -266,8 +272,7 @@ function buildEnhancedCanvasForOcr(img) {
       rawGray[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     }
 
-    // Estimasi latar belakang lokal untuk membersihkan noda lipatan kertas sebelum OCR
-    const blurRadius = Math.max(12, Math.round(Math.min(width, height) / 42));
+    const blurRadius = Math.max(14, Math.round(Math.min(width, height) / 36));
     const localBg =
       typeof separableBoxBlurFloat === "function"
         ? separableBoxBlurFloat(rawGray, width, height, blurRadius)
@@ -276,15 +281,15 @@ function buildEnhancedCanvasForOcr(img) {
     const normGray = new Uint8Array(total);
     for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
       const gVal = rawGray[p];
-      const bgVal = localBg ? Math.max(85, localBg[p]) : 235;
+      const bgVal = localBg ? Math.max(105, localBg[p]) : 238;
       const ratio = gVal / bgVal;
       let cleanVal;
-      if (ratio >= 0.87 || gVal >= 224) {
+      if (ratio >= 0.86 || gVal >= 220) {
         cleanVal = 255;
-      } else if (ratio <= 0.65 || gVal <= 95) {
+      } else if (ratio <= 0.45 || gVal <= 75) {
         cleanVal = 0;
       } else {
-        cleanVal = Math.max(0, Math.min(255, Math.round(((ratio - 0.65) / 0.22) * 255)));
+        cleanVal = Math.max(0, Math.min(255, Math.round(((ratio - 0.45) / 0.41) * 255)));
       }
       normGray[p] = cleanVal;
       data[i] = cleanVal;
@@ -804,6 +809,9 @@ function isBarcodeArtifactText(text, bbox) {
   if (/^[|\/\\]{2,}$/.test(clean)) {
     return true;
   }
+  if (clean.length === 1 && !/[A-Za-z0-9]/.test(clean)) {
+    return true;
+  }
   return false;
 }
 
@@ -820,7 +828,7 @@ function refineWordBoundingBoxWithInk(rawBbox, text, cleanGray, imgW, imgH) {
 
   const colCounts = new Uint16Array(bw);
   const rowCounts = new Uint16Array(bh);
-  const inkThreshold = 205;
+  const inkThreshold = 200;
 
   for (let y = y0; y < y1; y += 1) {
     const rOff = y * imgW;
@@ -929,8 +937,8 @@ function extractWordsFromTesseractData(data) {
 
 function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
   const invScale = scale > 0 ? 1 / scale : 1;
-  const maxCanvasW = canvas.width * 0.96;
-  const maxCanvasH = canvas.height * 0.25;
+  const maxCanvasW = canvas.width * 0.85;
+  const maxCanvasH = canvas.height * 0.16;
 
   return rawWords
     .filter((w) => {
@@ -940,13 +948,13 @@ function parseRawTesseractWords(rawWords, canvas, scale, cleanGray) {
 
       const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
       const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
-      if (boxW < 2 || boxH < 3 || boxW > maxCanvasW || boxH > maxCanvasH) {
+      if (boxW < 3 || boxH < 4 || boxW > maxCanvasW || boxH > maxCanvasH) {
         return false;
       }
 
       const conf = typeof w.confidence === "number" ? w.confidence : 55;
       const isAlnum = /^[A-Za-z0-9\-_./:()<>]+$/.test(rawStr);
-      const minConf = isAlnum ? 3 : 12;
+      const minConf = isAlnum ? 25 : 40;
       return conf >= minConf;
     })
     .map((w) => {
@@ -1000,33 +1008,12 @@ async function detectWordBoxesWithTesseract(canvas, scale, cleanGray) {
         null
       );
       const data = recognizeRes && recognizeRes.data ? recognizeRes.data : null;
-      let parsed = parseRawTesseractWords(
+      return parseRawTesseractWords(
         extractWordsFromTesseractData(data),
         canvas,
         scale,
         cleanGray
       );
-
-      if (parsed.length < 4) {
-        const binCanvas = buildBinarizedCropCanvas(canvas, 0.93);
-        const retryRes = await withPromiseTimeout(
-          worker.recognize(binCanvas, {}, { blocks: true, text: true, tsv: true }),
-          14000,
-          null
-        );
-        const retryData = retryRes && retryRes.data ? retryRes.data : null;
-        const retryParsed = parseRawTesseractWords(
-          extractWordsFromTesseractData(retryData),
-          binCanvas,
-          scale,
-          cleanGray
-        );
-        if (retryParsed.length > parsed.length) {
-          parsed = retryParsed;
-        }
-      }
-
-      return parsed;
     }
 
     if (typeof window.Tesseract !== "undefined" && typeof window.Tesseract.recognize === "function") {
@@ -1102,16 +1089,12 @@ function sortDetectedItemsReadingOrder(items) {
   });
 }
 
+// Memetakan koordinat 4 sudut dari ruang frame <video> ke gambar foto yang diambil
 function mapViewportQuadToImageQuad(viewportQuad, photoDataUrl) {
-  if (!Array.isArray(viewportQuad) || viewportQuad.length !== 4) return null;
+  if (!Array.isArray(viewportQuad) || viewportQuad.length !== 4 || !photoDataUrl) return null;
   const videoEl = document.querySelector("#reader video");
   if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
     return viewportQuad;
-  }
-
-  // Jika foto diambil via ImageCapture dengan rasio berbeda dari <video>, biarkan auto-crop menganalisis gambar asli
-  if (photoDataUrl && typeof window.ImageCapture !== "undefined") {
-    return null;
   }
 
   const vw = videoEl.videoWidth;
@@ -1130,8 +1113,8 @@ function mapViewportQuadToImageQuad(viewportQuad, photoDataUrl) {
   return viewportQuad.map((p) => {
     const vxPx = p.x * dispW + offX;
     const vyPx = p.y * dispH + offY;
-    const normX = Math.max(0.005, Math.min(0.995, vxPx / cw));
-    const normY = Math.max(0.005, Math.min(0.995, vyPx / ch));
+    const normX = Math.max(0.01, Math.min(0.99, vxPx / cw));
+    const normY = Math.max(0.01, Math.min(0.99, vyPx / ch));
     return { x: normX, y: normY };
   });
 }
@@ -1139,7 +1122,7 @@ function mapViewportQuadToImageQuad(viewportQuad, photoDataUrl) {
 async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
   const token = ++ocrRunToken;
   clearPhotoLensState();
-  setPhotoLensStatus("Auto-crop & deteksi teks/barkode...", false);
+  setPhotoLensStatus("Auto-crop tegak & penjernihan dokumen...", false);
 
   if (capturedPhotoPreview && rawImageUrl) {
     capturedPhotoPreview.src = rawImageUrl;
@@ -1165,6 +1148,8 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
     ocrNaturalWidth = img.naturalWidth || img.width;
     ocrNaturalHeight = img.naturalHeight || img.height;
 
+    setPhotoLensStatus("Mendeteksi angka, huruf & barcode...", false);
+
     const { canvas: enhancedCanvas, scale, cleanGray } = buildEnhancedCanvasForOcr(img);
 
     const nativeBarcodes = await detectBarcodeBoxesWithNativeDetector(img);
@@ -1178,12 +1163,6 @@ async function applyDetectedPhotoText(rawImageUrl, preDetectedQuad = null) {
       barcodeItems.map((bc) => decodeSingleBarcodeRegionFromImage(img, bc))
     );
     if (token !== ocrRunToken) return;
-
-    if (barcodeItems.length > 0) {
-      ocrWordItems = sortDetectedItemsReadingOrder(barcodeItems);
-      selectedOcrIndices = [];
-      renderOcrWordBoxes();
-    }
 
     const tesseractWords = await detectWordBoxesWithTesseract(enhancedCanvas, scale, cleanGray);
     if (token !== ocrRunToken) return;
@@ -1589,10 +1568,14 @@ async function triggerPhotoCapture() {
   }
 
   docAutoScanTriggered = true;
-  const capturedQuad = lastDetectedDocQuad ? lastDetectedDocQuad.map((p) => ({ ...p })) : null;
+  const capturedQuad =
+    isDocCameraFocused && lastDetectedDocQuad
+      ? lastDetectedDocQuad.map((p) => ({ ...p }))
+      : null;
+
   clearPhotoLensState();
   openPhotoLensPanel();
-  setPhotoLensStatus("Mengambil foto resolusi tinggi...", false);
+  setPhotoLensStatus("Auto-fokus & mengambil foto...", false);
 
   const snapDataUrl = await captureHighResPhotoFromCamera();
   if (snapDataUrl) {
