@@ -125,7 +125,6 @@ function hideAllMainSections() {
 }
 
 function resetTransientScannerUI() {
-  stopDocumentBoundaryDetector();
   isExcelTextPhotoMode = false;
   excelPhotoHistoryDepth = 0;
   closeExcelPreviewModalOnly();
@@ -143,6 +142,7 @@ function resetTransientScannerUI() {
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
+  isPendingScanDuplicate = false;
   resetCandidateScan();
 }
 
@@ -211,7 +211,6 @@ function openFeatureMenu(feature) {
       scannerViewport.classList.add("mode-full");
     }
     pushAppHistoryState("text-to-qr");
-    startDocumentBoundaryDetector();
   }
 
   ensureCameraStarted();
@@ -240,12 +239,14 @@ function enterExcelTextPhotoMode() {
 
   const task = getActiveExcelTask();
   if (appHeaderSubtitle && task) {
-    appHeaderSubtitle.textContent = "Arahkan ke teks/dokumen lalu tekan tombol foto";
+    appHeaderSubtitle.textContent = "Arahkan ke teks lalu tekan tombol foto";
   }
 
   excelPhotoHistoryDepth = 1;
   pushAppHistoryState("scan-to-excel-scan:text-mode");
-  startDocumentBoundaryDetector();
+  if (typeof triggerAutoFocus === "function") {
+    triggerAutoFocus(true);
+  }
 }
 
 function exitExcelTextPhotoMode(fromBack = false) {
@@ -255,7 +256,6 @@ function exitExcelTextPhotoMode(fromBack = false) {
     return;
   }
 
-  stopDocumentBoundaryDetector();
   isExcelTextPhotoMode = false;
   excelPhotoHistoryDepth = 0;
 

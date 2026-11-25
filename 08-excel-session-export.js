@@ -1,4 +1,4 @@
-// 8. Fitur Scan to Excel (Multi-Kolom, Urutan Kolom Otomatis & Generator .xlsx Murni)
+// 8. Fitur Scan to Excel (Multi-Kolom, Urutan Kolom Otomatis, Anti-Duplikat & Generator .xlsx Murni)
 function escapeHtmlSafe(str) {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -47,10 +47,39 @@ function getExcelNextTargetInfo(task) {
   return { colIndex, colName, rowNumber };
 }
 
+function findDuplicateInActiveExcelTask(rawText, taskOverride = null) {
+  const cleanText = String(rawText || "").trim();
+  const task = taskOverride || getActiveExcelTask();
+  if (!cleanText || !task || !Array.isArray(task.rows)) return null;
+
+  for (let rIdx = 0; rIdx < task.rows.length; rIdx += 1) {
+    const rowArr = task.rows[rIdx];
+    if (!Array.isArray(rowArr)) continue;
+    for (let cIdx = 0; cIdx < task.columns.length; cIdx += 1) {
+      const cellVal = String(rowArr[cIdx] || "").trim();
+      if (cellVal && cellVal === cleanText) {
+        return {
+          value: cleanText,
+          rowNumber: rIdx + 1,
+          colIndex: cIdx,
+          colName: task.columns[cIdx] || `Kolom ${cIdx + 1}`
+        };
+      }
+    }
+  }
+  return null;
+}
+
 function addScannedItemToExcel(rawText) {
   const cleanText = String(rawText || "").trim();
   const task = getActiveExcelTask();
-  if (!cleanText || !task) return;
+  if (!cleanText || !task) return false;
+
+  const dupInfo = findDuplicateInActiveExcelTask(cleanText, task);
+  if (dupInfo) {
+    showExcelScanToast(`Double scan dibatalkan: ${cleanText} (Baris #${dupInfo.rowNumber})`);
+    return false;
+  }
 
   const colCount = Math.max(1, task.columns.length);
   const targetCol = Math.max(0, Math.min(colCount - 1, task.activeColIndex || 0));
@@ -79,6 +108,7 @@ function addScannedItemToExcel(rawText) {
   const nextHint =
     task.sequentialColumns && colCount > 1 ? ` • Lanjut: ${nextColName}` : "";
   showExcelScanToast(`Masuk [${targetColName}]: ${cleanText}${nextHint}`);
+  return true;
 }
 
 function removeExcelSessionRow(index) {
@@ -312,7 +342,7 @@ function exportExcelTaskObject(task) {
     {
       name: "xl/_rels/workbook.xml.rels",
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationships xmlns="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 </Relationships>`
     },

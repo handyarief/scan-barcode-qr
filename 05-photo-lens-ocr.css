@@ -1,4 +1,4 @@
-/* Overlay Foto Hasil Auto-Crop CamScanner "Ajaib Pro" + Seleksi Teks/Kode Interaktif */
+/* Overlay Foto Asli + Seleksi Kata, Huruf, Angka & Barcode Interaktif Ala Google Lens */
 .photo-lens-overlay {
   display: none;
   position: absolute;
@@ -74,7 +74,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 54px 16px 46px;
+  padding: 54px 12px 44px;
   overflow: hidden;
   background: #14171a;
   touch-action: none;
@@ -85,9 +85,9 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  border-radius: 4px;
-  background: #ffffff;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48);
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
@@ -97,40 +97,7 @@
   display: block;
 }
 
-/* Animasi Scan Sweep Ala CamScanner Saat Proses Pemutihan "Ajaib Pro" */
-.doc-enhance-sweep {
-  display: none;
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  height: 3px;
-  background: linear-gradient(90deg, transparent, #2dd4bf, #99f6e4, #2dd4bf, transparent);
-  box-shadow: 0 0 14px rgba(45, 212, 191, 0.9);
-  z-index: 15;
-  pointer-events: none;
-}
-
-.doc-enhance-sweep.active {
-  display: block;
-  animation: docScanSweepMove 1.15s ease-in-out infinite;
-}
-
-@keyframes docScanSweepMove {
-  0% {
-    top: 12%;
-    opacity: 0.5;
-  }
-  50% {
-    top: 86%;
-    opacity: 1;
-  }
-  100% {
-    top: 12%;
-    opacity: 0.5;
-  }
-}
-
-/* Lapisan Interaktif OCR & Barcode di Atas Foto (Kapsul & Bingkai Halus Ala Google Lens) */
+/* Lapisan Interaktif Teks & Barcode Ala Google Lens */
 .photo-ocr-layer {
   position: absolute;
   inset: 0;
@@ -141,45 +108,40 @@
 
 .ocr-word-box {
   position: absolute;
-  border-radius: 6px;
-  background: rgba(59, 130, 246, 0.14);
-  border: 1px solid rgba(59, 130, 246, 0.48);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  border: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-barcode-box {
   position: absolute;
   border-radius: 10px;
-  background: rgba(14, 165, 233, 0.1);
-  border: 1.5px solid rgba(2, 132, 199, 0.72);
+  background: rgba(56, 189, 248, 0.2);
+  border: 1.5px solid rgba(125, 211, 252, 0.85);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .ocr-word-box:hover {
-  background: rgba(37, 99, 235, 0.24);
-  border-color: rgba(37, 99, 235, 0.85);
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .ocr-barcode-box:hover {
-  background: rgba(2, 132, 199, 0.18);
-  border-color: #2563eb;
+  background: rgba(56, 189, 248, 0.32);
+  border-color: #38bdf8;
 }
 
 .ocr-word-box.selected,
 .ocr-barcode-box.selected {
-  background: rgba(37, 99, 235, 0.3);
-  border: 1.5px solid #2563eb;
-  border-radius: 7px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.78);
+  background: rgba(66, 133, 244, 0.42);
+  border: 1.5px solid #4285f4;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
   z-index: 2;
-}
-
-.ocr-barcode-box.selected {
-  background: rgba(2, 132, 199, 0.24);
-  border-color: #2563eb;
 }
 
 /* Penanda Tetesan Biru Ala Google Lens di Ujung Blok Terpilih */
@@ -191,7 +153,7 @@
   bottom: -10px;
   width: 11px;
   height: 11px;
-  background: #2563eb;
+  background: #4285f4;
   border: 1.5px solid #ffffff;
   border-radius: 50% 50% 0 50%;
   transform: rotate(-45deg);
@@ -207,7 +169,7 @@
   bottom: -10px;
   width: 11px;
   height: 11px;
-  background: #2563eb;
+  background: #4285f4;
   border: 1.5px solid #ffffff;
   border-radius: 50% 50% 50% 0;
   transform: rotate(45deg);
@@ -215,7 +177,7 @@
   pointer-events: none;
 }
 
-/* Menu Kapsul Mengambang di Samping Blok Biru (Salin | Buat Barkode / Salin ke Excel) */
+/* Menu Kapsul Mengambang di Atas/Samping Blok Biru Ala Google Lens */
 .photo-lens-action-bar {
   position: absolute;
   z-index: 20;

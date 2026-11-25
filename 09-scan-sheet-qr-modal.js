@@ -1,4 +1,4 @@
-// 6. Getar haptic native & bunyi beep singkat saat scan berhasil
+// 6. Getar haptic native, bunyi beep singkat & notifikasi duplikat saat scan berhasil
 function triggerHapticFeedback(style = "success") {
   try {
     if (!navigator.vibrate) return;
@@ -6,13 +6,20 @@ function triggerHapticFeedback(style = "success") {
       navigator.vibrate(12);
     } else if (style === "medium") {
       navigator.vibrate(25);
+    } else if (style === "warning") {
+      navigator.vibrate([45, 45, 45]);
     } else {
       navigator.vibrate(140);
     }
   } catch (e) {}
 }
 
-function triggerScanFeedback() {
+function triggerScanFeedback(isDuplicate = false) {
+  if (isDuplicate) {
+    triggerHapticFeedback("warning");
+    playDuplicateBeep();
+    return;
+  }
   triggerHapticFeedback("success");
   playBeep();
 }
@@ -41,11 +48,55 @@ function playBeep() {
   } catch (e) {}
 }
 
+function playDuplicateBeep() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!audioCtx) {
+      audioCtx = new AudioCtx();
+    }
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(360, now);
+    osc.frequency.setValueAtTime(260, now + 0.11);
+    gain.gain.setValueAtTime(0.13, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.24);
+  } catch (e) {}
+}
+
 // 9. Kontrol Bottom Sheet Hasil Scan & Full Screen QR
-function openScanSheet(cleanText, formatName) {
-  scannedItemsCount += 1;
+function openScanSheet(cleanText, formatName, duplicateInfo = null) {
+  const isDup = Boolean(duplicateInfo);
+  if (!isDup) {
+    scannedItemsCount += 1;
+  }
+
   if (sheetScannedCount) {
-    sheetScannedCount.textContent = "Scanned";
+    sheetScannedCount.textContent = isDup ? "Double Scan (Auto Cancel)" : "Scanned";
+    sheetScannedCount.classList.toggle("duplicate", isDup);
+  }
+  if (sheetCompletedBtn) {
+    sheetCompletedBtn.disabled = isDup;
+    sheetCompletedBtn.style.display = isDup ? "none" : "";
+  }
+  if (sheetDuplicateAlert) {
+    if (isDup) {
+      sheetDuplicateAlert.textContent = `Nomor "${cleanText}" sudah pernah di-scan (Baris #${duplicateInfo.rowNumber}, Kolom "${duplicateInfo.colName}"). Input otomatis dibatalkan. Tekan panah bawah atau swipe ke bawah untuk scan lagi.`;
+      sheetDuplicateAlert.style.display = "block";
+    } else {
+      sheetDuplicateAlert.textContent = "";
+      sheetDuplicateAlert.style.display = "none";
+    }
   }
   if (sheetBarcodeValue) {
     sheetBarcodeValue.textContent = cleanText;
@@ -61,11 +112,15 @@ function openScanSheet(cleanText, formatName) {
       sheetExcelColRow.style.display = "flex";
     }
     if (sheetExcelColValue) {
-      sheetExcelColValue.textContent = `${targetInfo.colName} (Baris #${targetInfo.rowNumber})`;
+      sheetExcelColValue.textContent = isDup
+        ? `Dibatalkan (Sudah ada di Baris #${duplicateInfo.rowNumber})`
+        : `${targetInfo.colName} (Baris #${targetInfo.rowNumber})`;
     }
     if (statusBadge) {
       statusBadge.style.display = "inline-block";
-      statusBadge.textContent = "Siap Masuk Excel";
+      statusBadge.textContent = isDup ? "Double Scan Dibatalkan" : "Siap Masuk Excel";
+      statusBadge.classList.toggle("duplicate", isDup);
+      statusBadge.classList.toggle("ready", !isDup);
     }
   } else {
     if (sheetExcelColRow) {
@@ -74,6 +129,7 @@ function openScanSheet(cleanText, formatName) {
     if (statusBadge) {
       statusBadge.style.display = "none";
       statusBadge.textContent = "";
+      statusBadge.classList.remove("duplicate");
     }
   }
 
@@ -99,6 +155,17 @@ function closeScanSheetOnly() {
   if (sheetBackdrop) {
     sheetBackdrop.classList.remove("open");
   }
+  if (sheetDuplicateAlert) {
+    sheetDuplicateAlert.style.display = "none";
+    sheetDuplicateAlert.textContent = "";
+  }
+  if (sheetScannedCount) {
+    sheetScannedCount.classList.remove("duplicate");
+  }
+  if (sheetCompletedBtn) {
+    sheetCompletedBtn.disabled = false;
+    sheetCompletedBtn.style.display = "";
+  }
 }
 
 function dismissScanSheet(fromBack = false) {
@@ -113,10 +180,11 @@ function dismissScanSheet(fromBack = false) {
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
+  isPendingScanDuplicate = false;
   resetCandidateScan();
   if (statusBadge) {
     statusBadge.textContent = activeAppFeature === "scan-to-excel" ? "Scan Dibatalkan" : "";
-    statusBadge.classList.remove("ready");
+    statusBadge.classList.remove("ready", "duplicate");
   }
   if (activeAppFeature === "scan-to-excel") {
     currentRoute = "scan-to-excel-scan";
@@ -156,6 +224,7 @@ function copyScanSheetValue() {
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
+  isPendingScanDuplicate = false;
   resetCandidateScan();
   if (activeAppFeature === "scan-to-excel") {
     currentRoute = "scan-to-excel-scan";
@@ -198,6 +267,11 @@ function openFullscreenQrModalDirect() {
 }
 
 function completeScan() {
+  if (isPendingScanDuplicate) {
+    dismissScanSheet(false);
+    return;
+  }
+
   const activeCode = (pendingScanData && pendingScanData.text) || lastScanned;
   if (!activeCode) return;
 
@@ -209,6 +283,7 @@ function completeScan() {
     isScanLocked = false;
     lastScanned = "";
     pendingScanData = null;
+    isPendingScanDuplicate = false;
     resetCandidateScan();
     currentRoute = "scan-to-excel-scan";
     if (typeof syncHeaderBackButton === "function") {
@@ -239,12 +314,12 @@ function closeFullscreenQrModal() {
 
 function setupSheetSwipeDismiss() {
   if (!scanResultSheet) return;
-  const swipeTarget = sheetDragHandle || scanResultSheet;
 
-  swipeTarget.addEventListener(
+  scanResultSheet.addEventListener(
     "touchstart",
     (e) => {
       if (!scanResultSheet.classList.contains("open") || !e.touches || e.touches.length === 0) return;
+      if (e.target && e.target.closest("button")) return;
       isSheetDragging = true;
       sheetStartY = e.touches[0].clientY;
       sheetCurrentDeltaY = 0;
@@ -253,7 +328,7 @@ function setupSheetSwipeDismiss() {
     { passive: true }
   );
 
-  swipeTarget.addEventListener(
+  scanResultSheet.addEventListener(
     "touchmove",
     (e) => {
       if (!isSheetDragging || !e.touches || e.touches.length === 0) return;
@@ -270,7 +345,7 @@ function setupSheetSwipeDismiss() {
     if (!isSheetDragging) return;
     isSheetDragging = false;
     scanResultSheet.classList.remove("dragging");
-    if (sheetCurrentDeltaY > 75) {
+    if (sheetCurrentDeltaY > 65) {
       dismissScanSheet();
     } else {
       scanResultSheet.style.transform = "";
@@ -278,8 +353,8 @@ function setupSheetSwipeDismiss() {
     sheetCurrentDeltaY = 0;
   };
 
-  swipeTarget.addEventListener("touchend", finishSwipe);
-  swipeTarget.addEventListener("touchcancel", finishSwipe);
+  scanResultSheet.addEventListener("touchend", finishSwipe);
+  scanResultSheet.addEventListener("touchcancel", finishSwipe);
 }
 
 setupSheetSwipeDismiss();
@@ -298,12 +373,19 @@ function generateQR(text, formatName = "Scan", directFullscreen = false) {
   const cleanText = text.trim();
   if (!cleanText || isScanLocked || cleanText === lastScanned) return;
 
+  const duplicateInfo =
+    activeAppFeature === "scan-to-excel" && typeof findDuplicateInActiveExcelTask === "function"
+      ? findDuplicateInActiveExcelTask(cleanText)
+      : null;
+  const isDup = Boolean(duplicateInfo);
+
   isScanLocked = true;
   lastScanned = cleanText;
-  pendingScanData = { text: cleanText, format: formatName };
+  isPendingScanDuplicate = isDup;
+  pendingScanData = { text: cleanText, format: formatName, duplicateInfo };
   resetCandidateScan();
   pauseCameraForSingleScan();
-  triggerScanFeedback();
+  triggerScanFeedback(isDup);
 
   decodedTextEl.textContent = cleanText;
   formatInfoEl.textContent = `Format terbaca: ${formatName}`;
@@ -311,14 +393,16 @@ function generateQR(text, formatName = "Scan", directFullscreen = false) {
   if (activeAppFeature === "scan-to-excel") {
     if (statusBadge) {
       statusBadge.style.display = "inline-block";
-      statusBadge.textContent = "Siap Masuk Excel";
-      statusBadge.classList.add("ready");
+      statusBadge.textContent = isDup ? "Double Scan Dibatalkan" : "Siap Masuk Excel";
+      statusBadge.classList.toggle("duplicate", isDup);
+      statusBadge.classList.toggle("ready", !isDup);
     }
   } else {
     if (statusBadge) {
       statusBadge.style.display = "inline-block";
       statusBadge.textContent = "QR Siap";
       statusBadge.classList.add("ready");
+      statusBadge.classList.remove("duplicate");
     }
   }
 
@@ -339,7 +423,7 @@ function generateQR(text, formatName = "Scan", directFullscreen = false) {
     return;
   }
 
-  openScanSheet(cleanText, formatName);
+  openScanSheet(cleanText, formatName, duplicateInfo);
 }
 
 function handleManualSubmit() {
@@ -351,6 +435,7 @@ function handleManualSubmit() {
     isScanLocked = false;
     lastScanned = "";
     pendingScanData = null;
+    isPendingScanDuplicate = false;
     resetCandidateScan();
     generateQR(rawVal, detectedFmt);
     scannerInput.value = "";
@@ -390,6 +475,7 @@ document.addEventListener("keydown", (e) => {
       isScanLocked = false;
       lastScanned = "";
       pendingScanData = null;
+      isPendingScanDuplicate = false;
       resetCandidateScan();
       generateQR(code, detectedFmt);
     }
@@ -455,12 +541,13 @@ function resetScan(fromBack = false) {
   isScanLocked = false;
   lastScanned = "";
   pendingScanData = null;
+  isPendingScanDuplicate = false;
   resetCandidateScan();
   decodedTextEl.textContent = "-";
   formatInfoEl.textContent = "Format: -";
   if (statusBadge) {
     statusBadge.textContent = activeAppFeature === "scan-to-excel" ? "Menunggu Scan..." : "";
-    statusBadge.classList.remove("ready");
+    statusBadge.classList.remove("ready", "duplicate");
     if (activeAppFeature !== "scan-to-excel") {
       statusBadge.style.display = "none";
     }
@@ -497,9 +584,6 @@ function resetScan(fromBack = false) {
     if (typeof syncHeaderBackButton === "function") {
       syncHeaderBackButton(currentRoute);
     }
-  }
-  if (activeAppFeature === "text-to-qr") {
-    startDocumentBoundaryDetector();
   }
   if (activeAppFeature !== "menu") {
     resumeCameraForNextScan();

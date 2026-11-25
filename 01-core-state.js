@@ -11,7 +11,7 @@ const zoomBox = document.getElementById("zoom-box");
 const zoomSlider = document.getElementById("zoom-slider");
 const zoomValue = document.getElementById("zoom-value");
 const scannerViewport = document.getElementById("scanner-viewport");
-const docDetectCanvas = document.getElementById("doc-detect-canvas");
+const cameraFocusRing = document.getElementById("camera-focus-ring");
 const scanGuide = document.getElementById("scan-guide");
 const scanInstruction = document.getElementById("scan-instruction");
 const autoZoomBadge = document.getElementById("auto-zoom-badge");
@@ -35,6 +35,8 @@ const sheetBackdrop = document.getElementById("scan-sheet-backdrop");
 const scanResultSheet = document.getElementById("scan-result-sheet");
 const sheetDragHandle = document.getElementById("sheet-drag-handle");
 const sheetScannedCount = document.getElementById("sheet-scanned-count");
+const sheetCompletedBtn = document.getElementById("sheet-completed-btn");
+const sheetDuplicateAlert = document.getElementById("sheet-duplicate-alert");
 const sheetBarcodeValue = document.getElementById("sheet-barcode-value");
 const sheetFormatValue = document.getElementById("sheet-format-value");
 const sheetExcelColRow = document.getElementById("sheet-excel-col-row");
@@ -95,7 +97,8 @@ let isSheetHistoryPushed = false;
 let excelTasks = [];
 let activeExcelTaskId = null;
 let previewingExcelTaskId = null;
-let pendingScanData = null; // { text, format }
+let pendingScanData = null; // { text, format, duplicateInfo }
+let isPendingScanDuplicate = false;
 let excelToastTimer = null;
 let wakeLockSentinel = null;
 
@@ -103,17 +106,13 @@ let wakeLockSentinel = null;
 let isExcelTextPhotoMode = false;
 let excelPhotoHistoryDepth = 0;
 
-// State Auto-Focus, Auto-Detect 4 Sisi & Auto-Crop Dokumen
-let docDetectTimer = null;
-let lastDetectedDocQuad = null;
-let smoothedDocQuad = null;
-let docDetectMissCount = 0;
-let docStableHits = 0;
-let docLastStableQuad = null;
-let docAutoScanTriggered = false;
-let isDocCameraFocused = false;
-let docFocusStableFrames = 0;
-let docLastFocusTriggerAt = 0;
+// State Auto-Fokus Wajib & Validasi Jarak 30cm (Silent Background)
+let isCameraFocusedReady = false;
+let focusStableFramesCount = 0;
+let lastFrameSharpnessScore = 0;
+let lastRefocusAttemptAt = 0;
+let focusMonitorTimer = null;
+let focusRingTimer = null;
 
 // State Notes Hasil Scan untuk 1D to QR
 let qrScanNotes = []; // [{ id, text, checked }]

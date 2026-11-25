@@ -159,16 +159,16 @@
 
     <!-- 4. Area Kamera & Pemindai -->
     <section id="scanner-card" class="card scanner-card" style="display: none;">
-      <div id="scanner-viewport" class="scanner-viewport mode-full" onclick="triggerAutoFocus(true)">
+      <div id="scanner-viewport" class="scanner-viewport mode-full">
         <div id="reader"></div>
-        <canvas id="doc-detect-canvas" class="doc-detect-canvas"></canvas>
+        <div id="camera-focus-ring" class="camera-focus-ring" aria-hidden="true"></div>
 
         <!-- Tab Mode Scan di Atas -->
         <div id="scan-top-overlay" class="scan-top-overlay" onclick="event.stopPropagation()">
           <div class="scan-mode-tabs">
-            <button type="button" id="mode-full" class="mode-tab active" onclick="setScanMode('full')">Full</button>
-            <button type="button" id="mode-square" class="mode-tab" onclick="setScanMode('square')">Square</button>
-            <button type="button" id="mode-bar" class="mode-tab" onclick="setScanMode('bar')">Bar</button>
+            <button type="button" id="mode-full" class="mode-tab active" data-mode="full" onclick="setScanMode('full')">Full</button>
+            <button type="button" id="mode-square" class="mode-tab" data-mode="square" onclick="setScanMode('square')">Square</button>
+            <button type="button" id="mode-bar" class="mode-tab" data-mode="bar" onclick="setScanMode('bar')">Bar</button>
           </div>
           <div id="scan-instruction" class="scan-instruction"></div>
         </div>
@@ -234,7 +234,7 @@
           </button>
         </div>
 
-        <!-- Overlay Photo Lens (Auto-Crop + OCR Seleksi Blok) -->
+        <!-- Overlay Photo Lens (Foto Langsung + OCR Seleksi Blok Ala Google Lens) -->
         <div id="photo-lens-overlay" class="photo-lens-overlay" onclick="event.stopPropagation()">
           <div class="photo-lens-top-controls">
             <button type="button" class="lens-top-pill-btn" onclick="retakePhotoOnly()">Foto Ulang</button>
@@ -242,8 +242,7 @@
           </div>
 
           <div id="photo-lens-stage" class="photo-lens-stage">
-            <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil Foto Dokumen" />
-            <div id="doc-enhance-sweep" class="doc-enhance-sweep"></div>
+            <img id="captured-photo-preview" class="captured-photo-preview" alt="Hasil Foto" />
             <div id="photo-ocr-layer" class="photo-ocr-layer"></div>
 
             <div id="photo-lens-action-bar" class="photo-lens-action-bar">
@@ -253,7 +252,7 @@
             </div>
           </div>
 
-          <div id="photo-lens-status" class="photo-lens-status">Memproses dokumen...</div>
+          <div id="photo-lens-status" class="photo-lens-status">Memproses foto...</div>
         </div>
       </div>
 
@@ -329,8 +328,10 @@
 
     <div class="sheet-header-row">
       <span id="sheet-scanned-count" class="sheet-count-title">Scanned 1 items</span>
-      <button type="button" class="completed-btn" onclick="completeScan()">Completed</button>
+      <button type="button" id="sheet-completed-btn" class="completed-btn" onclick="completeScan()">Completed</button>
     </div>
+
+    <div id="sheet-duplicate-alert" class="sheet-duplicate-alert" style="display: none;"></div>
 
     <div class="sheet-detail-card">
       <div class="sheet-detail-row">
@@ -405,12 +406,11 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-  <!-- 10 Modul JavaScript Terurut Sesuai Dependensi Global (Langsung di Root) -->
+  <!-- 9 Modul JavaScript Terurut Sesuai Dependensi Global (Langsung di Root) -->
   <script src="./01-core-state.js"></script>
   <script src="./02-pwa-storage.js"></script>
   <script src="./03-navigation-menu.js"></script>
   <script src="./04-excel-tasks-hub.js"></script>
-  <script src="./05-document-scan-crop.js"></script>
   <script src="./06-photo-lens-ocr.js"></script>
   <script src="./07-qr-notes.js"></script>
   <script src="./08-excel-session-export.js"></script>

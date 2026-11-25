@@ -51,6 +51,211 @@ function resetCandidateScan() {
   scanCandidateHistory.clear();
 }
 
+function resetFocusLockState() {
+  isCameraFocusedReady = false;
+  focusStableFramesCount = 0;
+  if (cameraFocusRing) {
+    cameraFocusRing.classList.remove("active", "locked");
+  }
+}
+
+function showFocusRingVisual(locked = false, clientX = null, clientY = null) {
+  if (!cameraFocusRing || !scannerViewport) return;
+
+  if (typeof clientX === "number" && typeof clientY === "number") {
+    const rect = scannerViewport.getBoundingClientRect();
+    const x = Math.max(44, Math.min(rect.width - 44, clientX - rect.left));
+    const y = Math.max(44, Math.min(rect.height - 44, clientY - rect.top));
+    cameraFocusRing.style.left = `${x}px`;
+    cameraFocusRing.style.top = `${y}px`;
+  } else {
+    cameraFocusRing.style.left = "50%";
+    cameraFocusRing.style.top = "50%";
+  }
+
+  cameraFocusRing.classList.remove("locked");
+  cameraFocusRing.classList.add("active");
+
+  if (focusRingTimer) {
+    clearTimeout(focusRingTimer);
+  }
+  focusRingTimer = setTimeout(() => {
+    if (!cameraFocusRing) return;
+    if (locked) {
+      cameraFocusRing.classList.add("locked");
+      setTimeout(() => {
+        if (cameraFocusRing) {
+          cameraFocusRing.classList.remove("active", "locked");
+        }
+      }, 280);
+    } else {
+      cameraFocusRing.classList.remove("active", "locked");
+    }
+  }, 520);
+}
+
+// Mengukur ketajaman gambar frame video untuk memastikan auto-fokus tajam sebelum scan
+function measureVideoFrameSharpness() {
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return 0;
+  }
+
+  try {
+    const vw = videoEl.videoWidth;
+    const vh = videoEl.videoHeight;
+    const sw = 200;
+    const sh = Math.max(112, Math.round((vh / vw) * sw));
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return 0;
+
+    ctx.drawImage(videoEl, 0, 0, sw, sh);
+    const data = ctx.getImageData(0, 0, sw, sh).data;
+    const lum = new Uint8Array(sw * sh);
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      lum[p] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    }
+
+    let sum = 0;
+    let sqSum = 0;
+    let n = 0;
+    for (let y = 2; y < sh - 2; y += 2) {
+      const row = y * sw;
+      for (let x = 2; x < sw - 2; x += 2) {
+        const lap =
+          lum[row - sw + x] +
+          lum[row + sw + x] +
+          lum[row + x - 1] +
+          lum[row + x + 1] -
+          4 * lum[row + x];
+        sum += lap;
+        sqSum += lap * lap;
+        n += 1;
+      }
+    }
+    if (n === 0) return 0;
+    const mean = sum / n;
+    return Math.max(0, sqSum / n - mean * mean);
+  } catch (err) {
+    return 0;
+  }
+}
+
+function evaluateCameraFocusGate() {
+  if (!isCameraRunning || isScanLocked || document.visibilityState !== "visible") {
+    return false;
+  }
+
+  const sharpness = measureVideoFrameSharpness();
+  const prevSharp = lastFrameSharpnessScore;
+  lastFrameSharpnessScore = sharpness;
+
+  const isSharp = sharpness >= 115;
+  const isSteady = prevSharp > 0 ? Math.abs(sharpness - prevSharp) <= Math.max(45, prevSharp * 0.35) : true;
+
+  if (isSharp && isSteady) {
+    focusStableFramesCount += 1;
+    if (focusStableFramesCount >= 2) {
+      if (!isCameraFocusedReady) {
+        isCameraFocusedReady = true;
+        showFocusRingVisual(true);
+      }
+      return true;
+    }
+  } else {
+    focusStableFramesCount = 0;
+    isCameraFocusedReady = false;
+    const now = Date.now();
+    if (now - lastRefocusAttemptAt > 900) {
+      lastRefocusAttemptAt = now;
+      triggerAutoFocus(false);
+    }
+  }
+
+  return isCameraFocusedReady && isSharp;
+}
+
+async function waitForCameraAutoFocusLock(maxWaitMs = 1500) {
+  if (!isCameraRunning) return false;
+  await triggerAutoFocus(true);
+
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    if (evaluateCameraFocusGate() && isCameraFocusedReady) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 90));
+  }
+  return isCameraFocusedReady || measureVideoFrameSharpness() >= 115;
+}
+
+function startFocusMonitorLoop() {
+  if (focusMonitorTimer) {
+    clearInterval(focusMonitorTimer);
+  }
+  focusMonitorTimer = setInterval(() => {
+    if (
+      !isCameraRunning ||
+      isScanLocked ||
+      activeAppFeature === "menu" ||
+      document.visibilityState !== "visible" ||
+      (photoLensOverlay && photoLensOverlay.classList.contains("open"))
+    ) {
+      return;
+    }
+    evaluateCameraFocusGate();
+  }, 150);
+}
+
+// Validasi jarak scan wajib ±30 cm (sensor focusDistance bila tersedia + estimasi proporsi optik)
+function isScanWithinThirtyCmTarget(detectionMeta = null) {
+  let sensorDistMeters = null;
+  try {
+    const videoEl = document.querySelector("#reader video");
+    const stream = videoEl && videoEl.srcObject ? videoEl.srcObject : null;
+    const track =
+      stream && typeof stream.getVideoTracks === "function" ? stream.getVideoTracks()[0] : null;
+    if (track && typeof track.getSettings === "function") {
+      const settings = track.getSettings();
+      if (typeof settings.focusDistance === "number" && settings.focusDistance > 0) {
+        sensorDistMeters = settings.focusDistance;
+      }
+    }
+  } catch (err) {}
+
+  if (sensorDistMeters !== null) {
+    // Target jarak ±30 cm (toleransi 0.25m - 0.38m)
+    if (sensorDistMeters < 0.25 || sensorDistMeters > 0.38) {
+      return false;
+    }
+  }
+
+  // Estimasi jarak optik berdasarkan rasio ukuran objek/barcode terhadap frame video
+  if (detectionMeta && detectionMeta.boxWidth && detectionMeta.boxHeight && detectionMeta.frameWidth && detectionMeta.frameHeight) {
+    const areaRatio =
+      (detectionMeta.boxWidth * detectionMeta.boxHeight) /
+      Math.max(1, detectionMeta.frameWidth * detectionMeta.frameHeight);
+    const maxSpanRatio = Math.max(
+      detectionMeta.boxWidth / Math.max(1, detectionMeta.frameWidth),
+      detectionMeta.boxHeight / Math.max(1, detectionMeta.frameHeight)
+    );
+
+    // Terlalu dekat (< 30 cm): objek memenuhi porsi frame terlalu besar
+    if (areaRatio > 0.28 || maxSpanRatio > 0.72) {
+      return false;
+    }
+    // Terlalu jauh (> 30 cm): objek terlalu kecil di dalam frame
+    if (areaRatio < 0.012 && maxSpanRatio < 0.14) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function pauseCameraForSingleScan() {
   if (!isCameraRunning) return;
   try {
@@ -63,11 +268,12 @@ function pauseCameraForSingleScan() {
 function resumeCameraForNextScan() {
   if (!isCameraRunning) return;
   resetCandidateScan();
+  resetFocusLockState();
   try {
     if (typeof html5QrCode.resume === "function") {
       html5QrCode.resume();
     }
-    triggerAutoFocus(false);
+    triggerAutoFocus(true);
   } catch (err) {}
 }
 
@@ -191,11 +397,11 @@ const config = {
   qrbox: calculateDynamicQrBox
 };
 
-async function applyFocusConstraint(mode = "continuous") {
+async function applyFocusConstraint(mode = "continuous", extraConstraint = {}) {
   if (!isCameraRunning) return false;
   try {
     await html5QrCode.applyVideoConstraints({
-      advanced: [{ focusMode: mode }]
+      advanced: [{ focusMode: mode, ...extraConstraint }]
     });
     return true;
   } catch (err) {
@@ -203,36 +409,47 @@ async function applyFocusConstraint(mode = "continuous") {
   }
 }
 
-async function triggerAutoFocus(showIndicator = true) {
+async function triggerAutoFocus(showIndicator = true, clientX = null, clientY = null) {
   if (!isCameraRunning || isScanLocked) return;
 
-  if (showIndicator && scannerViewport) {
-    scannerViewport.classList.add("refocusing");
-    setTimeout(() => {
-      scannerViewport.classList.remove("refocusing");
-    }, 260);
+  resetFocusLockState();
+  lastRefocusAttemptAt = Date.now();
+
+  if (showIndicator) {
+    showFocusRingVisual(false, clientX, clientY);
   }
 
   try {
     const capabilities = html5QrCode.getRunningTrackCapabilities();
     const supportedModes = Array.isArray(capabilities?.focusMode) ? capabilities.focusMode : [];
+    const poiConstraint =
+      typeof clientX === "number" && typeof clientY === "number" && scannerViewport
+        ? {
+            pointsOfInterest: [
+              {
+                x: Math.max(0, Math.min(1, (clientX - scannerViewport.getBoundingClientRect().left) / Math.max(1, scannerViewport.clientWidth))),
+                y: Math.max(0, Math.min(1, (clientY - scannerViewport.getBoundingClientRect().top) / Math.max(1, scannerViewport.clientHeight)))
+              }
+            ]
+          }
+        : {};
 
     if (supportedModes.includes("single-shot")) {
-      await applyFocusConstraint("single-shot");
+      await applyFocusConstraint("single-shot", poiConstraint);
       if (supportedModes.includes("continuous")) {
         setTimeout(() => {
-          applyFocusConstraint("continuous").catch(() => {});
-        }, 260);
+          applyFocusConstraint("continuous", poiConstraint).catch(() => {});
+        }, 240);
       }
       return;
     }
 
     if (supportedModes.includes("continuous")) {
-      await applyFocusConstraint("continuous");
+      await applyFocusConstraint("continuous", poiConstraint);
       return;
     }
 
-    await applyFocusConstraint("continuous");
+    await applyFocusConstraint("continuous", poiConstraint);
   } catch (err) {}
 }
 
@@ -240,11 +457,12 @@ function startAutoFocusLoop() {
   if (autoFocusTimer) {
     clearInterval(autoFocusTimer);
   }
-  const intervalMs = typeof isTextPhotoCameraActive === "function" && isTextPhotoCameraActive() ? 2200 : 4500;
+  const intervalMs = typeof isTextPhotoCameraActive === "function" && isTextPhotoCameraActive() ? 2200 : 3800;
   autoFocusTimer = setInterval(() => {
     if (isCameraRunning && !isScanLocked && document.visibilityState === "visible") {
-      const isPhotoMode = typeof isTextPhotoCameraActive === "function" && isTextPhotoCameraActive();
-      triggerAutoFocus(isPhotoMode);
+      if (!isCameraFocusedReady) {
+        triggerAutoFocus(false);
+      }
     }
   }, intervalMs);
 }
@@ -262,7 +480,7 @@ if (scannerViewport) {
     if (typeof triggerHapticFeedback === "function") {
       triggerHapticFeedback("light");
     }
-    triggerAutoFocus(true);
+    triggerAutoFocus(true, e.clientX, e.clientY);
   });
 }
 
@@ -278,17 +496,19 @@ async function upgradeCameraResolutionIfSupported() {
 
 function setupCameraCapabilities() {
   upgradeCameraResolutionIfSupported();
+  resetFocusLockState();
+  startFocusMonitorLoop();
 
   try {
     const capabilities = html5QrCode.getRunningTrackCapabilities();
 
     if (capabilities && Array.isArray(capabilities.focusMode) && capabilities.focusMode.length > 0) {
       isFocusSupported = true;
-      triggerAutoFocus(false);
+      triggerAutoFocus(true);
       startAutoFocusLoop();
     } else {
       isFocusSupported = false;
-      triggerAutoFocus(false);
+      triggerAutoFocus(true);
       startAutoFocusLoop();
     }
 
@@ -379,7 +599,43 @@ function getRequiredConfirmHits(fmt, cleanText) {
   return 1;
 }
 
-function onScanSuccess(decodedText, decodedResult) {
+function buildHtml5QrDistanceMeta(decodedResult) {
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return null;
+  const cornerPoints =
+    decodedResult && decodedResult.result && Array.isArray(decodedResult.result.cornerPoints)
+      ? decodedResult.result.cornerPoints
+      : null;
+  if (!cornerPoints || cornerPoints.length < 2) return null;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  cornerPoints.forEach((pt) => {
+    if (!pt) return;
+    const px = Number(pt.x);
+    const py = Number(pt.y);
+    if (Number.isFinite(px)) {
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+    }
+    if (Number.isFinite(py)) {
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+    }
+  });
+
+  if (!isFinite(minX) || !isFinite(minY)) return null;
+  return {
+    boxWidth: Math.max(1, maxX - minX),
+    boxHeight: Math.max(1, maxY - minY),
+    frameWidth: videoEl.videoWidth,
+    frameHeight: videoEl.videoHeight
+  };
+}
+
+function onScanSuccess(decodedText, decodedResult, distanceMeta = null) {
   if (
     activeAppFeature === "menu" ||
     isTextPhotoCameraActive() ||
@@ -389,6 +645,16 @@ function onScanSuccess(decodedText, decodedResult) {
     return;
   }
   if (isScanLocked) return;
+
+  // Wajib auto-fokus tajam dan jarak ±30 cm terpenuhi
+  if (!evaluateCameraFocusGate()) {
+    return;
+  }
+
+  const resolvedDistMeta = distanceMeta || buildHtml5QrDistanceMeta(decodedResult);
+  if (!isScanWithinThirtyCmTarget(resolvedDistMeta)) {
+    return;
+  }
 
   const cleanText = String(decodedText || "").trim();
   if (cleanText.length < 3) return;
@@ -479,6 +745,10 @@ async function runNativeLiveFrameScan() {
     return;
   }
 
+  if (!evaluateCameraFocusGate()) {
+    return;
+  }
+
   isNativeLiveScanBusy = true;
   try {
     const cropCanvas = buildLiveCropCanvasFromVideo();
@@ -499,13 +769,26 @@ async function runNativeLiveFrameScan() {
     });
 
     const best = validItems[0];
-    onScanSuccess(best.text, {
-      result: {
-        format: {
-          formatName: best.format || detectScanFormatType(best.text, "Terdeteksi")
+    const distMeta = best && best.bbox
+      ? {
+          boxWidth: Math.max(1, best.bbox.x1 - best.bbox.x0),
+          boxHeight: Math.max(1, best.bbox.y1 - best.bbox.y0),
+          frameWidth: cropCanvas.width,
+          frameHeight: cropCanvas.height
         }
-      }
-    });
+      : null;
+
+    onScanSuccess(
+      best.text,
+      {
+        result: {
+          format: {
+            formatName: best.format || detectScanFormatType(best.text, "Terdeteksi")
+          }
+        }
+      },
+      distMeta
+    );
   } catch (err) {
   } finally {
     isNativeLiveScanBusy = false;
@@ -532,6 +815,7 @@ function ensureCameraStarted() {
   if (isCameraStarting) return;
 
   isCameraStarting = true;
+  resetFocusLockState();
   html5QrCode
     .start(
       { facingMode: "environment" },
@@ -548,6 +832,7 @@ function ensureCameraStarted() {
     .catch(() => {
       isCameraStarting = false;
       isCameraRunning = false;
+      resetFocusLockState();
       flashBtn.disabled = true;
       flashStatus.textContent = "Kamera tidak aktif.";
       const readerEl = document.getElementById("reader");
@@ -561,7 +846,11 @@ function ensureCameraStarted() {
 }
 
 async function stopCameraGracefully() {
-  stopDocumentBoundaryDetector();
+  resetFocusLockState();
+  if (focusMonitorTimer) {
+    clearInterval(focusMonitorTimer);
+    focusMonitorTimer = null;
+  }
   if (nativeLiveScanTimer) {
     clearInterval(nativeLiveScanTimer);
     nativeLiveScanTimer = null;

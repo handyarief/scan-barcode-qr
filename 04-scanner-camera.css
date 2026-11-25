@@ -57,19 +57,32 @@
   min-height: 330px;
 }
 
-/* Canvas Auto-Detect Tepi Dokumen Ala CamScanner */
-.doc-detect-canvas {
+/* Cincin Indikator Auto-Fokus Kamera HP */
+.camera-focus-ring {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 4;
+  top: 50%;
+  left: 50%;
+  width: 78px;
+  height: 78px;
+  margin-left: -39px;
+  margin-top: -39px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.28);
+  z-index: 6;
   pointer-events: none;
-  display: none;
+  opacity: 0;
+  transform: scale(1.25);
+  transition: opacity 0.18s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease;
 }
 
-.doc-detect-canvas.active {
-  display: block;
+.camera-focus-ring.active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.camera-focus-ring.locked {
+  border-color: #34d399;
 }
 
 /* Sembunyikan kotak & shading bawaan html5-qrcode agar memakai panduan mode kita */
