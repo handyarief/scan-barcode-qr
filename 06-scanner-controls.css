@@ -1,15 +1,23 @@
-/* Bar Bawah: Ikon Kontrol Kamera */
+/* Bar Bawah: Ikon Kontrol Kamera (Native Floating Glass Bar) */
 .scan-bottom-controls {
   position: absolute;
-  bottom: 22px;
-  left: 0;
-  right: 0;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 28px);
+  max-width: 396px;
   z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 18px;
-  pointer-events: none;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  pointer-events: auto;
 }
 
 .icon-circle-btn {
@@ -18,16 +26,22 @@
   height: 44px;
   padding: 0;
   border-radius: 50%;
-  background: rgba(55, 65, 81, 0.72);
+  background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  transition: background 0.16s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .icon-circle-btn:hover:not(:disabled) {
-  background: rgba(31, 41, 55, 0.88);
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.icon-circle-btn:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 .icon-circle-btn.active {
@@ -42,28 +56,34 @@
 }
 
 .icon-circle-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
 /* Tombol Foto Bulat */
 .photo-shutter-circle-btn {
   pointer-events: auto;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   border-radius: 50%;
-  background: rgba(55, 65, 81, 0.72);
+  background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
-  border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  touch-action: manipulation;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.16s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .photo-shutter-circle-btn:hover:not(:disabled) {
-  background: rgba(31, 41, 55, 0.88);
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.photo-shutter-circle-btn:active:not(:disabled) {
+  transform: scale(0.88);
 }
 
 .photo-shutter-circle-btn.active {
@@ -77,8 +97,8 @@
   gap: 8px;
   margin: 10px 12px 0;
   padding: 8px 10px;
-  background: #f8f9fa;
-  border-radius: 8px;
+  background: #f8fafc;
+  border-radius: 10px;
   border: 1px solid var(--border);
   font-size: 0.8rem;
   color: var(--muted);
@@ -99,6 +119,11 @@
   border-radius: 99px;
   background: #d0d7de;
   color: #161616;
+  touch-action: manipulation;
+}
+
+.mini-pill-btn:active {
+  transform: scale(0.94);
 }
 
 .mini-pill-btn.active {
@@ -124,7 +149,7 @@
   flex: 1;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 9px;
   font-size: 0.95rem;
   outline: none;
   background: #ffffff;

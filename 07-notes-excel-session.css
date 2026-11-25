@@ -50,8 +50,13 @@
   padding: 6px 9px;
   font-size: 0.74rem;
   font-weight: 600;
-  border-radius: 7px;
+  border-radius: 8px;
   white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.qr-notes-btn:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
 .qr-notes-btn.primary {
@@ -94,7 +99,7 @@
   color: #15803d;
   background: #dcfce7;
   padding: 5px 10px;
-  border-radius: 7px;
+  border-radius: 8px;
 }
 
 .qr-notes-feedback.visible {
@@ -109,8 +114,10 @@
 .qr-notes-list {
   max-height: 170px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 10px;
   background: #f8fafc;
   display: flex;
   flex-direction: column;
@@ -130,6 +137,7 @@
   padding: 8px 10px;
   background: #ffffff;
   border-bottom: 1px solid #f1f5f9;
+  transition: background 0.14s ease;
 }
 
 .qr-note-item:last-child {
@@ -176,13 +184,18 @@
   color: #94a3b8;
   padding: 2px 6px;
   font-size: 0.78rem;
-  border-radius: 5px;
+  border-radius: 6px;
   flex-shrink: 0;
+  touch-action: manipulation;
 }
 
 .qr-note-del-btn:hover:not(:disabled) {
   background: #fee2e2;
   color: #dc2626;
+}
+
+.qr-note-del-btn:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 /* Panel Sesi Scan to Excel */
@@ -241,11 +254,16 @@
   color: #ffffff;
   padding: 7px 10px;
   font-size: 0.78rem;
-  border-radius: 7px;
+  border-radius: 8px;
+  touch-action: manipulation;
 }
 
 .excel-finish-btn:hover:not(:disabled) {
   background: #1d4ed8;
+}
+
+.excel-finish-btn:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .excel-export-btn {
@@ -253,11 +271,16 @@
   color: #ffffff;
   padding: 7px 12px;
   font-size: 0.78rem;
-  border-radius: 7px;
+  border-radius: 8px;
+  touch-action: manipulation;
 }
 
 .excel-export-btn:hover:not(:disabled) {
   background: #15803d;
+}
+
+.excel-export-btn:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .excel-export-btn:disabled {
@@ -271,6 +294,8 @@
   align-items: center;
   gap: 6px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   padding-bottom: 2px;
 }
 
@@ -284,6 +309,11 @@
   border: 1px solid #e2e8f0;
   white-space: nowrap;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.excel-col-pill:active {
+  transform: scale(0.95);
 }
 
 .excel-col-pill.active {
@@ -295,8 +325,10 @@
 .excel-table-wrap {
   max-height: 165px;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #ffffff;
 }
 
@@ -341,34 +373,44 @@
   color: #dc2626;
   padding: 3px 8px;
   font-size: 0.72rem;
-  border-radius: 5px;
+  border-radius: 6px;
+  touch-action: manipulation;
 }
 
 .excel-del-row-btn:hover:not(:disabled) {
   background: #fecaca;
 }
 
+.excel-del-row-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
 button {
   background: var(--primary);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 14px;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, transform 0.2s ease;
+  touch-action: manipulation;
+  transition: background 0.15s, transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 button:hover:not(:disabled) {
   background: var(--primary-hover);
 }
 
+button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
 button.secondary {
-  background: #e0e0e0;
-  color: #161616;
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 button.secondary:hover:not(:disabled) {
-  background: #c6c6c6;
+  background: #cbd5e1;
 }

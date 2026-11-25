@@ -1,6 +1,13 @@
-// 5. Navigasi Berbasis Tombol Back HP (History API + Popstate)
+// 5. Navigasi Berbasis Tombol Back HP (History API + Popstate) & Native App Bar Sync
+function syncHeaderBackButton(routeName) {
+  if (!headerBackBtn) return;
+  const showBack = routeName !== "menu";
+  headerBackBtn.style.display = showBack ? "inline-flex" : "none";
+}
+
 function pushAppHistoryState(routeName) {
   currentRoute = routeName;
+  syncHeaderBackButton(routeName);
   if (isHandlingPopState) return;
   try {
     window.history.pushState({ appRoute: routeName }, "");
@@ -9,6 +16,7 @@ function pushAppHistoryState(routeName) {
 
 function replaceAppHistoryState(routeName) {
   currentRoute = routeName;
+  syncHeaderBackButton(routeName);
   try {
     window.history.replaceState({ appRoute: routeName }, "");
   } catch (err) {}
@@ -17,6 +25,7 @@ function replaceAppHistoryState(routeName) {
 try {
   window.history.replaceState({ appRoute: "menu" }, "");
 } catch (err) {}
+syncHeaderBackButton("menu");
 
 window.addEventListener("popstate", () => {
   if (ignorePopStateCount > 0) {
@@ -68,6 +77,29 @@ window.addEventListener("popstate", () => {
 });
 
 function navigateBackOneStep() {
+  if (typeof triggerHapticFeedback === "function") {
+    triggerHapticFeedback("light");
+  }
+  if (excelPreviewModal && excelPreviewModal.classList.contains("open")) {
+    closeExcelTaskPreview(false);
+    return;
+  }
+  if (fullscreenQrModal && fullscreenQrModal.classList.contains("open")) {
+    resetScan(false);
+    return;
+  }
+  if (scanResultSheet && scanResultSheet.classList.contains("open")) {
+    dismissScanSheet(false);
+    return;
+  }
+  if (photoLensOverlay && photoLensOverlay.classList.contains("open")) {
+    closePhotoLensPanel(false);
+    return;
+  }
+  if (activeAppFeature === "scan-to-excel" && isExcelTextPhotoMode) {
+    exitExcelTextPhotoMode(false);
+    return;
+  }
   if (currentRoute === "scan-to-excel-scan" || currentRoute === "scan-to-excel-new") {
     openExcelTaskHubView(true);
     replaceAppHistoryState("scan-to-excel-hub");
@@ -125,8 +157,16 @@ function openFeatureMenu(feature) {
   const validFeatures = ["1d-to-qr", "scan-to-excel", "text-to-qr"];
   if (!validFeatures.includes(feature)) return;
 
+  if (typeof triggerHapticFeedback === "function") {
+    triggerHapticFeedback("light");
+  }
+
   activeAppFeature = feature;
   resetTransientScannerUI();
+
+  if (typeof requestScreenWakeLock === "function") {
+    requestScreenWakeLock();
+  }
 
   if (feature === "scan-to-excel") {
     openExcelTaskHubView(false);
@@ -235,6 +275,7 @@ function exitExcelTextPhotoMode(fromBack = false) {
 
   setScanMode(currentScanMode || "full");
   currentRoute = "scan-to-excel-scan";
+  syncHeaderBackButton(currentRoute);
   if (!isScanLocked) {
     resumeCameraForNextScan();
   }
@@ -246,6 +287,10 @@ async function openExcelTaskHubView(fromBack = false) {
   resetTransientScannerUI();
   hideAllMainSections();
 
+  if (typeof releaseScreenWakeLock === "function") {
+    releaseScreenWakeLock();
+  }
+
   if (appHeaderTitle) appHeaderTitle.textContent = "Scan to Excel";
   if (appHeaderSubtitle) appHeaderSubtitle.textContent = "Buat task baru atau lanjutkan task berjalan";
   if (excelTaskHubView) excelTaskHubView.style.display = "flex";
@@ -255,6 +300,7 @@ async function openExcelTaskHubView(fromBack = false) {
     pushAppHistoryState("scan-to-excel-hub");
   } else {
     currentRoute = "scan-to-excel-hub";
+    syncHeaderBackButton(currentRoute);
   }
 
   await stopCameraGracefully();
@@ -290,6 +336,10 @@ async function backToMainMenu(fromBack = false) {
   resetTransientScannerUI();
   hideAllMainSections();
 
+  if (typeof releaseScreenWakeLock === "function") {
+    releaseScreenWakeLock();
+  }
+
   if (homeMenuView) {
     homeMenuView.style.display = "flex";
   }
@@ -304,6 +354,7 @@ async function backToMainMenu(fromBack = false) {
     pushAppHistoryState("menu");
   } else {
     currentRoute = "menu";
+    syncHeaderBackButton(currentRoute);
   }
 
   await stopCameraGracefully();

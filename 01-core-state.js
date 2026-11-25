@@ -3,6 +3,7 @@ const decodedTextEl = document.getElementById("decoded-text");
 const formatInfoEl = document.getElementById("format-info");
 const statusBadge = document.getElementById("status-badge");
 const scannerInput = document.getElementById("scanner-input");
+const headerBackBtn = document.getElementById("header-back-btn");
 const installBtn = document.getElementById("install-btn");
 const flashBtn = document.getElementById("flash-btn");
 const flashStatus = document.getElementById("flash-status");
@@ -96,6 +97,7 @@ let activeExcelTaskId = null;
 let previewingExcelTaskId = null;
 let pendingScanData = null; // { text, format }
 let excelToastTimer = null;
+let wakeLockSentinel = null;
 
 // Sub-mode Foto Text-to-QR di dalam menu Scan to Excel
 let isExcelTextPhotoMode = false;

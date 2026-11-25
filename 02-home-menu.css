@@ -1,4 +1,4 @@
-/* Menu Utama Kotak-Kotak Warna-Warni Sebelum Scan */
+/* Menu Utama Kotak-Kotak Warna-Warni Sebelum Scan (Native Spring Tactile Cards) */
 .home-menu-view {
   flex: 1;
   display: flex;
@@ -20,22 +20,30 @@
   justify-content: center;
   text-align: center;
   padding: 22px 14px;
-  border-radius: 18px;
+  border-radius: 20px;
   border: none;
   color: #ffffff;
   min-height: 158px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+  touch-action: manipulation;
+  box-shadow:
+    0 10px 22px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, filter 0.16s ease;
 }
 
 .menu-tile-card:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+  box-shadow:
+    0 14px 26px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
   filter: brightness(1.04);
 }
 
 .menu-tile-card:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.95);
+  box-shadow:
+    0 4px 12px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .menu-tile-card.tile-blue {
@@ -67,9 +75,10 @@
 .tile-icon-box {
   width: 60px;
   height: 60px;
-  border-radius: 16px;
+  border-radius: 17px;
   background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,14 +89,14 @@
 .tile-title {
   font-size: 1.05rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   color: #ffffff;
 }
 
 .tile-desc {
   font-size: 0.76rem;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
   margin-top: 4px;
   line-height: 1.35;
 }

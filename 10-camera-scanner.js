@@ -5,6 +5,10 @@ function setScanMode(mode) {
   currentScanMode = mode;
   resetCandidateScan();
 
+  if (typeof triggerHapticFeedback === "function") {
+    triggerHapticFeedback("light");
+  }
+
   if (scannerViewport) {
     scannerViewport.classList.remove("mode-full", "mode-square", "mode-bar");
     scannerViewport.classList.add(`mode-${mode}`);
@@ -24,12 +28,18 @@ function setScanMode(mode) {
 
 function toggleZoomPanel() {
   if (!zoomBox || !zoomToggleBtn) return;
+  if (typeof triggerHapticFeedback === "function") {
+    triggerHapticFeedback("light");
+  }
   const isOpen = zoomBox.classList.toggle("open");
   zoomToggleBtn.classList.toggle("active", isOpen);
 }
 
 function toggleKeyboardPanel() {
   if (!manualPanel || !keyboardToggleBtn) return;
+  if (typeof triggerHapticFeedback === "function") {
+    triggerHapticFeedback("light");
+  }
   const isOpen = manualPanel.classList.toggle("open");
   keyboardToggleBtn.classList.toggle("active", isOpen);
   if (isOpen && scannerInput) {
@@ -249,6 +259,9 @@ if (scannerViewport) {
     ) {
       return;
     }
+    if (typeof triggerHapticFeedback === "function") {
+      triggerHapticFeedback("light");
+    }
     triggerAutoFocus(true);
   });
 }
@@ -335,6 +348,9 @@ function setupCameraCapabilities() {
 
 async function toggleFlash() {
   if (!isCameraRunning || !isFlashSupported) return;
+  if (typeof triggerHapticFeedback === "function") {
+    triggerHapticFeedback("light");
+  }
 
   const nextState = !isFlashOn;
   try {

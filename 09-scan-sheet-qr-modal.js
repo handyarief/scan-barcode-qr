@@ -1,11 +1,19 @@
-// 6. Getar & bunyi beep singkat saat scan berhasil
-function triggerScanFeedback() {
+// 6. Getar haptic native & bunyi beep singkat saat scan berhasil
+function triggerHapticFeedback(style = "success") {
   try {
-    if (navigator.vibrate) {
+    if (!navigator.vibrate) return;
+    if (style === "light") {
+      navigator.vibrate(12);
+    } else if (style === "medium") {
+      navigator.vibrate(25);
+    } else {
       navigator.vibrate(140);
     }
   } catch (e) {}
+}
 
+function triggerScanFeedback() {
+  triggerHapticFeedback("success");
   playBeep();
 }
 
@@ -115,6 +123,9 @@ function dismissScanSheet(fromBack = false) {
   } else if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
     currentRoute = activeAppFeature;
   }
+  if (typeof syncHeaderBackButton === "function") {
+    syncHeaderBackButton(currentRoute);
+  }
   resumeCameraForNextScan();
 }
 
@@ -122,6 +133,7 @@ function copyScanSheetValue() {
   const activeCode = (pendingScanData && pendingScanData.text) || lastScanned;
   if (!activeCode) return;
 
+  triggerHapticFeedback("light");
   writeTextToClipboardSafe(activeCode);
 
   if (activeAppFeature === "1d-to-qr") {
@@ -149,6 +161,9 @@ function copyScanSheetValue() {
     currentRoute = "scan-to-excel-scan";
   } else if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
     currentRoute = activeAppFeature;
+  }
+  if (typeof syncHeaderBackButton === "function") {
+    syncHeaderBackButton(currentRoute);
   }
   if (shouldPopSheetHistory) {
     ignoreNextSheetPopState = true;
@@ -186,6 +201,8 @@ function completeScan() {
   const activeCode = (pendingScanData && pendingScanData.text) || lastScanned;
   if (!activeCode) return;
 
+  triggerHapticFeedback("medium");
+
   if (activeAppFeature === "scan-to-excel") {
     addScannedItemToExcel(activeCode);
     closeScanSheetOnly();
@@ -194,6 +211,9 @@ function completeScan() {
     pendingScanData = null;
     resetCandidateScan();
     currentRoute = "scan-to-excel-scan";
+    if (typeof syncHeaderBackButton === "function") {
+      syncHeaderBackButton(currentRoute);
+    }
     if (isSheetHistoryPushed && window.history.length > 1) {
       isSheetHistoryPushed = false;
       ignoreNextSheetPopState = true;
@@ -388,6 +408,7 @@ document.addEventListener("keydown", (e) => {
 
 function copyText() {
   if (!lastScanned) return;
+  triggerHapticFeedback("light");
   writeTextToClipboardSafe(lastScanned);
 
   if (sheetCopyBtn) {
@@ -414,6 +435,7 @@ function downloadQR() {
   const dataUrl = img ? img.src : canvas ? canvas.toDataURL("image/png") : null;
   if (!dataUrl) return;
 
+  triggerHapticFeedback("light");
   const link = document.createElement("a");
   link.href = dataUrl;
   link.download = `QR_${lastScanned}.png`;
@@ -453,6 +475,9 @@ function resetScan(fromBack = false) {
     photoLensOverlay.classList.contains("open")
   ) {
     currentRoute = "text-to-qr:photo-lens";
+    if (typeof syncHeaderBackButton === "function") {
+      syncHeaderBackButton(currentRoute);
+    }
     if (ocrWordItems.length > 0) {
       renderOcrWordBoxes();
     }
@@ -469,6 +494,9 @@ function resetScan(fromBack = false) {
   }
   if (activeAppFeature === "1d-to-qr" || activeAppFeature === "text-to-qr") {
     currentRoute = activeAppFeature;
+    if (typeof syncHeaderBackButton === "function") {
+      syncHeaderBackButton(currentRoute);
+    }
   }
   if (activeAppFeature === "text-to-qr") {
     startDocumentBoundaryDetector();
