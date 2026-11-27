@@ -1,4 +1,4 @@
-// 7. Engine Foto Lens: Auto-Fokus -> Tangkap Foto Asli Utuh -> Deteksi Barcode & Semua Kata/Huruf/Angka
+// 7. Engine Foto Lens: Framing Presisi Live Preview -> Deteksi Cepat & Rapi Ala Google Lens
 let ocrPreloadPromise = null;
 
 function setPhotoLensStatus(msg, hide = false) {
@@ -102,53 +102,107 @@ function closePhotoLensPanel(fromBack = false) {
   }
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve) => {
-    if (!blob) {
-      resolve("");
-      return;
-    }
-    try {
-      const reader = new FileReader();
-      reader.onload = (ev) => resolve(ev && ev.target && ev.target.result ? String(ev.target.result) : "");
-      reader.onerror = () => resolve("");
-      reader.readAsDataURL(blob);
-    } catch (err) {
-      resolve("");
-    }
-  });
+function getLiveViewportAspectRatio() {
+  const targetEl = scannerViewport || document.querySelector("#reader video");
+  if (!targetEl) return 0;
+  const rect = targetEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 0;
+  return rect.width / rect.height;
 }
 
-function captureSnapshotFromVideo() {
-  const videoEl = document.querySelector("#reader video");
-  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return "";
+function drawCroppedToViewportDataUrl(source, srcW, srcH, targetAspect, maxOutDim = 1600) {
+  if (!source || !srcW || !srcH) return "";
   try {
-    const vw = videoEl.videoWidth;
-    const vh = videoEl.videoHeight;
+    let sx = 0;
+    let sy = 0;
+    let sw = srcW;
+    let sh = srcH;
+
+    if (targetAspect > 0) {
+      const srcAspect = srcW / srcH;
+      if (srcAspect > targetAspect) {
+        sw = Math.max(1, Math.round(srcH * targetAspect));
+        sx = Math.max(0, Math.round((srcW - sw) / 2));
+      } else if (srcAspect < targetAspect) {
+        sh = Math.max(1, Math.round(srcW / targetAspect));
+        sy = Math.max(0, Math.round((srcH - sh) / 2));
+      }
+    }
+
+    const maxCropDim = Math.max(sw, sh, 1);
+    const scale = maxCropDim > maxOutDim ? maxOutDim / maxCropDim : 1;
+    const outW = Math.max(1, Math.round(sw * scale));
+    const outH = Math.max(1, Math.round(sh * scale));
+
     const canvas = document.createElement("canvas");
-    canvas.width = vw;
-    canvas.height = vh;
+    canvas.width = outW;
+    canvas.height = outH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return "";
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(videoEl, 0, 0, vw, vh);
-    return canvas.toDataURL("image/jpeg", 0.96);
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, outW, outH);
+    return canvas.toDataURL("image/jpeg", 0.94);
   } catch (err) {
     return "";
   }
 }
 
+function captureSnapshotFromVideo(targetAspect = 0) {
+  const videoEl = document.querySelector("#reader video");
+  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return "";
+  return drawCroppedToViewportDataUrl(
+    videoEl,
+    videoEl.videoWidth,
+    videoEl.videoHeight,
+    targetAspect,
+    1600
+  );
+}
+
+async function cropPhotoBlobToViewport(photoBlob, targetAspect) {
+  if (!photoBlob) return "";
+  const objectUrl = URL.createObjectURL(photoBlob);
+  try {
+    const img = await loadImageElement(objectUrl);
+    const natW = img.naturalWidth || img.width;
+    const natH = img.naturalHeight || img.height;
+    return drawCroppedToViewportDataUrl(img, natW, natH, targetAspect, 1600);
+  } catch (err) {
+    return "";
+  } finally {
+    try {
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {}
+  }
+}
+
 async function captureHighResPhotoFromCamera() {
-  if (typeof waitForCameraAutoFocusLock === "function") {
-    await withPromiseTimeout(waitForCameraAutoFocusLock(1600), 1800, true).catch(() => {});
-  } else if (typeof triggerAutoFocus === "function") {
-    await withPromiseTimeout(triggerAutoFocus(true), 450, null).catch(() => {});
+  const targetAspect = getLiveViewportAspectRatio();
+
+  // Jika kamera belum terkunci fokus, lakukan penguncian singkat agar tetap responsif
+  const alreadyFocused = typeof isCameraFocusedReady !== "undefined" && Boolean(isCameraFocusedReady);
+  if (!alreadyFocused) {
+    if (typeof waitForCameraAutoFocusLock === "function") {
+      await withPromiseTimeout(waitForCameraAutoFocusLock(450), 500, true).catch(() => {});
+    } else if (typeof triggerAutoFocus === "function") {
+      await withPromiseTimeout(triggerAutoFocus(true), 250, null).catch(() => {});
+    }
   }
 
-  // Prioritaskan ImageCapture.takePhoto() agar hasil tangkapan sama persis dengan kamera HP asli
+  // Prioritaskan frame video live yang dipotong sesuai viewport agar framing 100% sama & instan
+  const videoEl = document.querySelector("#reader video");
+  const vw = videoEl ? videoEl.videoWidth || 0 : 0;
+  const vh = videoEl ? videoEl.videoHeight || 0 : 0;
+  if (videoEl && Math.max(vw, vh) >= 640) {
+    const exactFrame = captureSnapshotFromVideo(targetAspect);
+    if (exactFrame) {
+      return exactFrame;
+    }
+  }
+
+  // Fallback ke ImageCapture.takePhoto() hanya jika stream video beresolusi rendah
   try {
-    const videoEl = document.querySelector("#reader video");
     const mediaStream = videoEl && videoEl.srcObject ? videoEl.srcObject : null;
     const videoTrack =
       mediaStream && typeof mediaStream.getVideoTracks === "function"
@@ -158,18 +212,18 @@ async function captureHighResPhotoFromCamera() {
     if (videoTrack && typeof window.ImageCapture !== "undefined") {
       const imageCapture = new window.ImageCapture(videoTrack);
       if (typeof imageCapture.takePhoto === "function") {
-        const photoBlob = await withPromiseTimeout(imageCapture.takePhoto(), 2200, null);
+        const photoBlob = await withPromiseTimeout(imageCapture.takePhoto(), 1800, null);
         if (photoBlob) {
-          const dataUrl = await blobToDataUrl(photoBlob);
-          if (dataUrl) return dataUrl;
+          const croppedDataUrl = await cropPhotoBlobToViewport(photoBlob, targetAspect);
+          if (croppedDataUrl) return croppedDataUrl;
         }
       }
     }
   } catch (err) {}
 
-  const videoSnap = captureSnapshotFromVideo();
-  if (videoSnap) {
-    return videoSnap;
+  const fallbackSnap = captureSnapshotFromVideo(targetAspect);
+  if (fallbackSnap) {
+    return fallbackSnap;
   }
 
   return "";
@@ -208,7 +262,7 @@ async function getPersistentOcrWorker() {
           logger: () => {}
         });
         await worker.setParameters({
-          tessedit_pageseg_mode: "6",
+          tessedit_pageseg_mode: "3",
           preserve_interword_spaces: "1"
         });
         return worker;
@@ -228,12 +282,12 @@ function preloadOcrWorker() {
   return ocrPreloadPromise;
 }
 
-// Kanvas OCR internal beresolusi tinggi tanpa mengubah foto tampilan asli
+// Kanvas OCR internal dengan normalisasi pencahayaan lokal + penajaman ringan tanpa mengubah foto asli
 function buildOcrCanvasFromImage(img, invertDarkBg = false) {
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   const maxDim = Math.max(naturalW, naturalH, 1);
-  const targetMaxDim = maxDim < 1500 ? 1700 : Math.min(2100, maxDim);
+  const targetMaxDim = maxDim < 1280 ? 1400 : Math.min(1560, maxDim);
   const scale = targetMaxDim / maxDim;
 
   const width = Math.max(1, Math.round(naturalW * scale));
@@ -241,7 +295,7 @@ function buildOcrCanvasFromImage(img, invertDarkBg = false) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return { canvas, scale: 1, width, height };
 
   ctx.imageSmoothingEnabled = true;
@@ -251,50 +305,102 @@ function buildOcrCanvasFromImage(img, invertDarkBg = false) {
   try {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
-    const len = data.length;
-
-    const hist = new Uint32Array(256);
-    const gray = new Uint8Array(width * height);
     const totalPixels = width * height;
+    const gray = new Uint8Array(totalPixels);
 
-    for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      const l = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-      gray[p] = l;
-      hist[l] += 1;
+    for (let i = 0, p = 0; p < totalPixels; i += 4, p += 1) {
+      gray[p] = (77 * data[i] + 150 * data[i + 1] + 29 * data[i + 2]) >> 8;
     }
 
-    // Potong 2% ujung histogram agar bayangan/silau ekstrem tidak menaikkan noise latar
-    const trimTarget = Math.floor(totalPixels * 0.02);
-    let accLow = 0;
-    let minL = 0;
-    for (let v = 0; v < 256; v += 1) {
-      accLow += hist[v];
-      if (accLow >= trimTarget) {
-        minL = v;
-        break;
+    // Estimasi latar pencahayaan lokal per blok grid agar bayangan kertas & teks pudar tetap tajam
+    const cellSize = Math.max(24, Math.round(Math.min(width, height) / 22));
+    const gridCols = Math.max(1, Math.ceil(width / cellSize));
+    const gridRows = Math.max(1, Math.ceil(height / cellSize));
+    const bgGrid = new Float32Array(gridCols * gridRows);
+
+    for (let gy = 0; gy < gridRows; gy += 1) {
+      const yStart = gy * cellSize;
+      const yEnd = Math.min(height, yStart + cellSize);
+      for (let gx = 0; gx < gridCols; gx += 1) {
+        const xStart = gx * cellSize;
+        const xEnd = Math.min(width, xStart + cellSize);
+        let sum = 0;
+        let count = 0;
+        let maxVal = 0;
+        let minVal = 255;
+
+        for (let y = yStart; y < yEnd; y += 2) {
+          const rowOff = y * width;
+          for (let x = xStart; x < xEnd; x += 2) {
+            const v = gray[rowOff + x];
+            sum += v;
+            count += 1;
+            if (v > maxVal) maxVal = v;
+            if (v < minVal) minVal = v;
+          }
+        }
+
+        const mean = count > 0 ? sum / count : 200;
+        bgGrid[gy * gridCols + gx] = invertDarkBg
+          ? Math.max(24, minVal * 0.65 + mean * 0.35)
+          : Math.max(45, maxVal * 0.68 + mean * 0.32);
       }
     }
 
-    let accHigh = 0;
-    let maxL = 255;
-    for (let v = 255; v >= 0; v -= 1) {
-      accHigh += hist[v];
-      if (accHigh >= trimTarget) {
-        maxL = v;
-        break;
+    const normBuf = new Uint8Array(totalPixels);
+    for (let y = 0; y < height; y += 1) {
+      const fy = (y + 0.5) / cellSize - 0.5;
+      const gy0 = Math.max(0, Math.min(gridRows - 1, Math.floor(fy)));
+      const gy1 = Math.max(0, Math.min(gridRows - 1, gy0 + 1));
+      const ty = Math.max(0, Math.min(1, fy - gy0));
+      const rowOff = y * width;
+
+      for (let x = 0; x < width; x += 1) {
+        const fx = (x + 0.5) / cellSize - 0.5;
+        const gx0 = Math.max(0, Math.min(gridCols - 1, Math.floor(fx)));
+        const gx1 = Math.max(0, Math.min(gridCols - 1, gx0 + 1));
+        const tx = Math.max(0, Math.min(1, fx - gx0));
+
+        const topBg = bgGrid[gy0 * gridCols + gx0] * (1 - tx) + bgGrid[gy0 * gridCols + gx1] * tx;
+        const botBg = bgGrid[gy1 * gridCols + gx0] * (1 - tx) + bgGrid[gy1 * gridCols + gx1] * tx;
+        const localBg = Math.max(36, topBg * (1 - ty) + botBg * ty);
+
+        const p = rowOff + x;
+        let val;
+        if (invertDarkBg) {
+          const lift = Math.max(0, gray[p] - localBg);
+          val = 255 - Math.min(255, Math.round(lift * 2.1));
+        } else {
+          const ratio = (gray[p] / localBg) * 246;
+          // Peregangan kontras lembut: tinta makin jelas, latar kertas bersih mendekati putih
+          val = Math.round((ratio - 128) * 1.24 + 134);
+        }
+        normBuf[p] = val < 0 ? 0 : val > 255 ? 255 : val;
       }
     }
 
-    const span = Math.max(48, maxL - minL);
-    for (let i = 0, p = 0; i < len; i += 4, p += 1) {
-      let norm = Math.max(0, Math.min(255, Math.round(((gray[p] - minL) / span) * 255)));
-      if (invertDarkBg) {
-        norm = 255 - norm;
+    // Penajaman ringan (unsharp mask 4-tetangga) agar huruf kecil terbaca jernih
+    for (let y = 0; y < height; y += 1) {
+      const rowOff = y * width;
+      const upOff = y > 0 ? (y - 1) * width : rowOff;
+      const downOff = y < height - 1 ? (y + 1) * width : rowOff;
+
+      for (let x = 0; x < width; x += 1) {
+        const p = rowOff + x;
+        const center = normBuf[p];
+        const left = x > 0 ? normBuf[p - 1] : center;
+        const right = x < width - 1 ? normBuf[p + 1] : center;
+        const avgNeighbors = (left + right + normBuf[upOff + x] + normBuf[downOff + x]) * 0.25;
+        let sharp = Math.round(center + (center - avgNeighbors) * 0.42);
+        if (sharp < 0) sharp = 0;
+        else if (sharp > 255) sharp = 255;
+
+        const idx = p * 4;
+        data[idx] = sharp;
+        data[idx + 1] = sharp;
+        data[idx + 2] = sharp;
+        data[idx + 3] = 255;
       }
-      data[i] = norm;
-      data[i + 1] = norm;
-      data[i + 2] = norm;
-      data[i + 3] = 255;
     }
 
     ctx.putImageData(imageData, 0, 0);
@@ -453,7 +559,7 @@ async function scanBarcodeFromCanvasWithFileDecoder(targetCanvas) {
   return null;
 }
 
-async function detectConfirmedBarcodesFromImage(img, ocrPrep) {
+async function detectConfirmedBarcodesFromImage(img, ocrPrep, allowSlowFallback = false) {
   const nativeItems = await detectBarcodeBoxesWithNativeDetector(img, 1);
   if (nativeItems.length > 0) {
     return deduplicateBarcodeItems(nativeItems);
@@ -467,23 +573,25 @@ async function detectConfirmedBarcodesFromImage(img, ocrPrep) {
     return deduplicateBarcodeItems(nativeFromOcr);
   }
 
-  const fileDecoded = await scanBarcodeFromCanvasWithFileDecoder(ocrPrep.canvas);
-  if (fileDecoded && fileDecoded.text) {
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-    return [
-      {
-        type: "barcode",
-        text: fileDecoded.text,
-        format: fileDecoded.format || detectScanFormatType(fileDecoded.text, "BARCODE"),
-        bbox: {
-          x0: w * 0.15,
-          y0: h * 0.2,
-          x1: w * 0.85,
-          y1: h * 0.8
+  if (allowSlowFallback) {
+    const fileDecoded = await scanBarcodeFromCanvasWithFileDecoder(ocrPrep.canvas);
+    if (fileDecoded && fileDecoded.text) {
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      return [
+        {
+          type: "barcode",
+          text: fileDecoded.text,
+          format: fileDecoded.format || detectScanFormatType(fileDecoded.text, "BARCODE"),
+          bbox: {
+            x0: w * 0.15,
+            y0: h * 0.2,
+            x1: w * 0.85,
+            y1: h * 0.8
+          }
         }
-      }
-    ];
+      ];
+    }
   }
 
   return [];
@@ -519,10 +627,6 @@ function isBoxOverlappingBarcode(wordBbox, barcodeItems) {
 function extractWordsFromTesseractData(data) {
   if (!data) return [];
 
-  if (Array.isArray(data.words) && data.words.length > 0) {
-    return data.words;
-  }
-
   const collected = [];
   if (Array.isArray(data.blocks)) {
     data.blocks.forEach((block) => {
@@ -538,6 +642,10 @@ function extractWordsFromTesseractData(data) {
   }
   if (collected.length > 0) {
     return collected;
+  }
+
+  if (Array.isArray(data.words) && data.words.length > 0) {
+    return data.words;
   }
 
   if (Array.isArray(data.lines) && data.lines.length > 0) {
@@ -579,60 +687,66 @@ function extractWordsFromTesseractData(data) {
   return [];
 }
 
+function sanitizeOcrToken(rawStr) {
+  return String(rawStr || "")
+    .trim()
+    .replace(/^[|_~`^•·]+|[|_~`^•·]+$/g, "")
+    .trim();
+}
+
 function isMeaningfulTextToken(rawStr) {
-  const clean = String(rawStr || "").trim();
+  const clean = sanitizeOcrToken(rawStr);
   if (!clean) return false;
-  // Tolak token yang hanya berisi tanda baca/simbol/garis tanpa huruf atau angka
   if (!/[A-Za-z0-9]/.test(clean)) return false;
-  // Tolak karakter tunggal berulang seperti "iii" atau "---"
   if (/^([A-Za-z0-9])\1{2,}$/.test(clean) && clean.length >= 4) return false;
+  const alnumCount = (clean.match(/[A-Za-z0-9]/g) || []).length;
+  if (clean.length >= 3 && alnumCount / clean.length < 0.4) return false;
   return true;
 }
 
 function parseRawTesseractWords(rawWords, canvas, scale, strictMode = false) {
   const invScale = scale > 0 ? 1 / scale : 1;
-  const maxCanvasW = canvas.width * 0.88;
-  const maxCanvasH = canvas.height * 0.16;
-  const minCanvasH = Math.max(6, canvas.height * 0.0045);
+  const maxCanvasW = canvas.width * 0.82;
+  const maxCanvasH = canvas.height * 0.13;
+  const minCanvasH = Math.max(7, canvas.height * 0.0055);
+  const minCanvasW = Math.max(4, canvas.width * 0.004);
 
   return rawWords
     .filter((w) => {
       if (!w || !w.bbox) return false;
-      const rawStr = String(w.text || "").trim();
-      if (!isMeaningfulTextToken(rawStr)) return false;
+      const cleanStr = sanitizeOcrToken(w.text);
+      if (!isMeaningfulTextToken(cleanStr)) return false;
 
       const boxW = (Number(w.bbox.x1) || 0) - (Number(w.bbox.x0) || 0);
       const boxH = (Number(w.bbox.y1) || 0) - (Number(w.bbox.y0) || 0);
-      if (boxW < 3 || boxH < minCanvasH || boxW > maxCanvasW || boxH > maxCanvasH) {
+      if (boxW < minCanvasW || boxH < minCanvasH || boxW > maxCanvasW || boxH > maxCanvasH) {
         return false;
       }
 
-      // Tolak garis vertikal/horizontal tipis seperti border tabel atau nat keramik
       const aspectRatio = boxW / Math.max(1, boxH);
-      if (aspectRatio < 0.14 || aspectRatio > 26) {
+      if (aspectRatio < 0.18 || aspectRatio > 22) {
         return false;
       }
 
       const conf = typeof w.confidence === "number" ? w.confidence : 50;
-      const isAlnum = /^[A-Za-z0-9]+$/.test(rawStr);
-      const isShort = rawStr.length <= 2;
+      const isCodeLike = /^[A-Za-z0-9/.\-:+]+$/.test(cleanStr);
 
-      let minConf = strictMode ? 52 : 42;
-      if (isShort && !isAlnum) {
-        minConf = strictMode ? 68 : 58;
-      } else if (isShort) {
-        minConf = strictMode ? 56 : 46;
-      } else if (isAlnum) {
-        minConf = strictMode ? 46 : 36;
+      let minConf = strictMode ? 58 : 44;
+      if (cleanStr.length === 1) {
+        minConf = strictMode ? 78 : 72;
+      } else if (cleanStr.length === 2) {
+        minConf = isCodeLike ? (strictMode ? 62 : 52) : (strictMode ? 70 : 62);
+      } else if (isCodeLike) {
+        minConf = strictMode ? 50 : 38;
       }
 
       return conf >= minConf;
     })
     .map((w) => {
-      const rawStr = String(w.text).trim();
+      const cleanStr = sanitizeOcrToken(w.text);
       return {
         type: "word",
-        text: rawStr,
+        text: cleanStr,
         confidence: typeof w.confidence === "number" ? w.confidence : 50,
         bbox: {
           x0: Math.max(0, (Number(w.bbox.x0) || 0) * invScale),
@@ -645,19 +759,19 @@ function parseRawTesseractWords(rawWords, canvas, scale, strictMode = false) {
     .filter((item) => item.text.length > 0 && item.bbox.x1 > item.bbox.x0 && item.bbox.y1 > item.bbox.y0);
 }
 
-async function recognizeCanvasWords(worker, canvas, scale, psm = "6", strictMode = false) {
+async function recognizeCanvasWords(worker, canvas, scale, psm = "3", strictMode = false) {
   if (worker) {
     await withPromiseTimeout(
       worker.setParameters({
         tessedit_pageseg_mode: String(psm),
         preserve_interword_spaces: "1"
       }),
-      1800,
+      1500,
       null
     );
     const recognizeRes = await withPromiseTimeout(
-      worker.recognize(canvas, {}, { blocks: true, text: true, tsv: true }),
-      16000,
+      worker.recognize(canvas, {}, { blocks: true, text: true }),
+      14000,
       null
     );
     const data = recognizeRes && recognizeRes.data ? recognizeRes.data : null;
@@ -670,9 +784,9 @@ async function recognizeCanvasWords(worker, canvas, scale, psm = "6", strictMode
         canvas,
         "eng",
         { logger: () => {}, tessedit_pageseg_mode: String(psm) },
-        { blocks: true, text: true, tsv: true }
+        { blocks: true, text: true }
       ),
-      16000,
+      14000,
       null
     );
     const data = fallbackRes && fallbackRes.data ? fallbackRes.data : null;
@@ -705,7 +819,7 @@ function mergeOcrWordPasses(primaryWords, secondaryWords) {
   secondaryWords.forEach((cand) => {
     const isDuplicateBox = merged.some((ex) => {
       const { iou, minContainment } = computeBboxIoUAndContainment(ex.bbox, cand.bbox);
-      if (iou >= 0.35 || minContainment >= 0.62) {
+      if (iou >= 0.3 || minContainment >= 0.58) {
         return true;
       }
       const cMidX = (cand.bbox.x0 + cand.bbox.x1) / 2;
@@ -725,29 +839,37 @@ function mergeOcrWordPasses(primaryWords, secondaryWords) {
 
 function pruneIsolatedNoiseWords(words) {
   if (words.length <= 2) return words;
+
+  // Hanya jadikan kata berkepercayaan tinggi sebagai jangkar agar kelompok noise latar tidak saling menyelamatkan
+  const anchorFlags = words.map((item) => {
+    const conf = typeof item.confidence === "number" ? item.confidence : 50;
+    return item.text.length >= 2 && conf >= 58;
+  });
+
   return words.filter((item, idx) => {
     const conf = typeof item.confidence === "number" ? item.confidence : 50;
     const isShort = item.text.length <= 2;
-    if (!isShort && conf >= 48) return true;
+    if (!isShort && conf >= 56) return true;
 
     const cx = (item.bbox.x0 + item.bbox.x1) / 2;
     const cy = (item.bbox.y0 + item.bbox.y1) / 2;
     const h = Math.max(10, item.bbox.y1 - item.bbox.y0);
 
-    let nearbyCount = 0;
+    let nearbyAnchors = 0;
     for (let j = 0; j < words.length; j += 1) {
-      if (idx === j) continue;
+      if (idx === j || !anchorFlags[j]) continue;
       const other = words[j];
       const ocx = (other.bbox.x0 + other.bbox.x1) / 2;
       const ocy = (other.bbox.y0 + other.bbox.y1) / 2;
       const dx = Math.abs(ocx - cx);
       const dy = Math.abs(ocy - cy);
-      if (dy <= h * 2.4 && dx <= h * 9) {
-        nearbyCount += 1;
+      if (dy <= h * 2.2 && dx <= h * 8.5) {
+        nearbyAnchors += 1;
+        break;
       }
     }
 
-    if (nearbyCount === 0 && conf < 65) {
+    if (nearbyAnchors === 0 && (isShort || conf < 72)) {
       return false;
     }
     return true;
@@ -758,24 +880,28 @@ function alignAndRefineWordBoxes(words) {
   const sorted = sortDetectedItemsReadingOrder(words);
   if (sorted.length === 0) return [];
 
-  // Kelompokkan kotak dalam satu baris horizontal yang sama untuk menyamakan tinggi garis
+  // Kelompokkan kotak dalam baris yang sama secara ketat agar baris rapat (mis. Nama/Alamat/No Hp) tidak tercampur
   const lines = [];
   sorted.forEach((word) => {
     const midY = (word.bbox.y0 + word.bbox.y1) / 2;
-    const h = Math.max(8, word.bbox.y1 - word.bbox.y0);
+    const h = Math.max(6, word.bbox.y1 - word.bbox.y0);
     let targetLine = null;
     for (const line of lines) {
       const lineMidY = (line.y0 + line.y1) / 2;
-      const lineH = Math.max(8, line.y1 - line.y0);
-      if (Math.abs(midY - lineMidY) <= Math.max(lineH, h) * 0.45) {
+      const lineH = Math.max(6, line.y1 - line.y0);
+      const minH = Math.min(lineH, h);
+      const overlapY = Math.min(line.y1, word.bbox.y1) - Math.max(line.y0, word.bbox.y0);
+      const overlapRatio = overlapY / Math.max(1, minH);
+      if (Math.abs(midY - lineMidY) <= minH * 0.45 && overlapRatio >= 0.35) {
         targetLine = line;
         break;
       }
     }
     if (targetLine) {
       targetLine.items.push(word);
-      targetLine.y0 = Math.min(targetLine.y0, word.bbox.y0);
-      targetLine.y1 = Math.max(targetLine.y1, word.bbox.y1);
+      const count = targetLine.items.length;
+      targetLine.y0 = (targetLine.y0 * (count - 1) + word.bbox.y0) / count;
+      targetLine.y1 = (targetLine.y1 * (count - 1) + word.bbox.y1) / count;
     } else {
       lines.push({
         y0: word.bbox.y0,
@@ -785,10 +911,13 @@ function alignAndRefineWordBoxes(words) {
     }
   });
 
-  const refined = [];
-  lines.forEach((line) => {
+  lines.sort((a, b) => (a.y0 + a.y1) - (b.y0 + b.y1));
+
+  const refinedLines = lines.map((line) => {
     const lineItems = [...line.items].sort((a, b) => a.bbox.x0 - b.bbox.x0);
-    const lineH = Math.max(10, line.y1 - line.y0);
+    const heights = lineItems.map((it) => Math.max(6, it.bbox.y1 - it.bbox.y0)).sort((a, b) => a - b);
+    const medianH = heights[Math.floor(heights.length / 2)] || Math.max(8, line.y1 - line.y0);
+    const refinedRow = [];
 
     for (let i = 0; i < lineItems.length; i += 1) {
       const curr = {
@@ -796,66 +925,84 @@ function alignAndRefineWordBoxes(words) {
         bbox: { ...lineItems[i].bbox }
       };
 
-      // Normalisasi vertikal ringan agar blok dalam satu baris terlihat rata rapi ala Google Lens
-      const currH = Math.max(8, curr.bbox.y1 - curr.bbox.y0);
-      if (currH >= lineH * 0.65) {
-        curr.bbox.y0 = curr.bbox.y0 * 0.65 + line.y0 * 0.35;
-        curr.bbox.y1 = curr.bbox.y1 * 0.65 + line.y1 * 0.35;
+      const currH = Math.max(6, curr.bbox.y1 - curr.bbox.y0);
+      if (currH >= medianH * 0.65 && currH <= medianH * 1.45) {
+        curr.bbox.y0 = curr.bbox.y0 * 0.55 + line.y0 * 0.45;
+        curr.bbox.y1 = curr.bbox.y1 * 0.55 + line.y1 * 0.45;
       }
 
-      // Cegah tumpang tindih horizontal dengan kotak sebelumnya
-      const prev = refined.length > 0 ? refined[refined.length - 1] : null;
-      if (prev && prev.type === "word") {
-        const prevMidY = (prev.bbox.y0 + prev.bbox.y1) / 2;
-        const currMidY = (curr.bbox.y0 + curr.bbox.y1) / 2;
-        if (Math.abs(prevMidY - currMidY) <= lineH * 0.5 && curr.bbox.x0 < prev.bbox.x1 + 2) {
+      const prev = refinedRow.length > 0 ? refinedRow[refinedRow.length - 1] : null;
+      if (prev && curr.bbox.x0 < prev.bbox.x1 + 2) {
+        const midX = (prev.bbox.x1 + curr.bbox.x0) / 2;
+        if (midX - prev.bbox.x0 > 4 && curr.bbox.x1 - midX > 4) {
+          prev.bbox.x1 = midX - 1;
+          curr.bbox.x0 = midX + 1;
+        } else {
           curr.bbox.x0 = Math.min(curr.bbox.x1 - 4, prev.bbox.x1 + 2);
         }
       }
 
       if (curr.bbox.x1 > curr.bbox.x0 + 2 && curr.bbox.y1 > curr.bbox.y0 + 2) {
-        refined.push(curr);
+        refinedRow.push(curr);
       }
     }
+    return refinedRow;
   });
 
-  return refined;
+  // Cegah tumpang tindih vertikal antar baris yang rapat
+  for (let r = 1; r < refinedLines.length; r += 1) {
+    const prevRow = refinedLines[r - 1];
+    const currRow = refinedLines[r];
+    for (const curr of currRow) {
+      for (const prev of prevRow) {
+        const horizOverlap = Math.min(prev.bbox.x1, curr.bbox.x1) - Math.max(prev.bbox.x0, curr.bbox.x0);
+        if (horizOverlap > 2 && curr.bbox.y0 < prev.bbox.y1 + 2) {
+          const midY = (prev.bbox.y1 + curr.bbox.y0) / 2;
+          if (midY - prev.bbox.y0 > 5 && curr.bbox.y1 - midY > 5) {
+            prev.bbox.y1 = midY - 1;
+            curr.bbox.y0 = midY + 1;
+          }
+        }
+      }
+    }
+  }
+
+  return refinedLines.flat();
 }
 
-async function detectWordBoxesWithTesseract(img) {
+async function detectWordBoxesWithTesseract(ocrPrep, img) {
   try {
     const worker = await withPromiseTimeout(getPersistentOcrWorker(), 12000, null);
-    const normalPrep = buildOcrCanvasFromImage(img, false);
-    const structuredWords = await recognizeCanvasWords(
+    // PSM 3 (Auto Page Segmentation) jauh lebih akurat & cepat untuk nota/tabel multi-kolom
+    const primaryWords = await recognizeCanvasWords(
       worker,
-      normalPrep.canvas,
-      normalPrep.scale,
-      "6",
+      ocrPrep.canvas,
+      ocrPrep.scale,
+      "3",
       false
     );
 
-    let combined = structuredWords;
+    let combined = primaryWords;
 
-    // Jalankan sparse pass (PSM 11) hanya bila hasil utama sedikit, dengan filter ketat
-    if (combined.length < 5) {
+    // Jalankan pass tambahan hanya jika hasil utama sangat sedikit
+    if (combined.length < 3) {
       const sparseWords = await recognizeCanvasWords(
         worker,
-        normalPrep.canvas,
-        normalPrep.scale,
+        ocrPrep.canvas,
+        ocrPrep.scale,
         "11",
         true
       );
       combined = mergeOcrWordPasses(combined, sparseWords);
     }
 
-    // Jika teks masih minim, coba latar gelap/terbalik dengan filter ketat
-    if (combined.length < 3) {
+    if (combined.length < 2 && img) {
       const invPrep = buildOcrCanvasFromImage(img, true);
       const invWords = await recognizeCanvasWords(
         worker,
         invPrep.canvas,
         invPrep.scale,
-        "6",
+        "3",
         true
       );
       combined = mergeOcrWordPasses(combined, invWords);
@@ -876,8 +1023,8 @@ function sortDetectedItemsReadingOrder(items) {
     const midAY = (a.bbox.y0 + a.bbox.y1) / 2;
     const midBY = (b.bbox.y0 + b.bbox.y1) / 2;
     const lineThreshold = Math.max(
-      12,
-      ((a.bbox.y1 - a.bbox.y0) + (b.bbox.y1 - b.bbox.y0)) * 0.35
+      10,
+      Math.min(a.bbox.y1 - a.bbox.y0, b.bbox.y1 - b.bbox.y0) * 0.55
     );
     if (Math.abs(midAY - midBY) > lineThreshold) {
       return midAY - midBY;
@@ -889,9 +1036,8 @@ function sortDetectedItemsReadingOrder(items) {
 async function applyDetectedPhotoText(rawImageUrl) {
   const token = ++ocrRunToken;
   clearPhotoLensState();
-  setPhotoLensStatus("Membaca kata, huruf, angka & barcode...", false);
+  setPhotoLensStatus("Membaca teks, angka & barcode...", false);
 
-  // Tampilkan foto asli utuh tanpa filter atau auto-crop
   if (capturedPhotoPreview && rawImageUrl) {
     capturedPhotoPreview.src = rawImageUrl;
     capturedPhotoPreview.classList.add("has-image");
@@ -905,11 +1051,20 @@ async function applyDetectedPhotoText(rawImageUrl) {
     ocrNaturalHeight = img.naturalHeight || img.height;
 
     const ocrPrep = buildOcrCanvasFromImage(img, false);
-    const barcodeItems = await detectConfirmedBarcodesFromImage(img, ocrPrep);
+
+    // Jalankan deteksi Barcode native & OCR Tesseract secara paralel untuk mempercepat hasil
+    const [nativeBarcodes, tesseractWords] = await Promise.all([
+      detectConfirmedBarcodesFromImage(img, ocrPrep, false),
+      detectWordBoxesWithTesseract(ocrPrep, img)
+    ]);
     if (token !== ocrRunToken) return;
 
-    const tesseractWords = await detectWordBoxesWithTesseract(img);
-    if (token !== ocrRunToken) return;
+    let barcodeItems = nativeBarcodes;
+    // Fallback decoder file ZXing hanya dijalankan jika barcode native kosong dan teks OCR sangat minim
+    if (barcodeItems.length === 0 && tesseractWords.length <= 4) {
+      barcodeItems = await detectConfirmedBarcodesFromImage(img, ocrPrep, true);
+      if (token !== ocrRunToken) return;
+    }
 
     const cleanWords = tesseractWords.filter(
       (wordItem) => !isBoxOverlappingBarcode(wordItem.bbox, barcodeItems)
@@ -1060,8 +1215,8 @@ function renderOcrWordBoxes() {
     box.setAttribute("role", "button");
     box.setAttribute("aria-label", item.text || "Barcode");
 
-    const padX = item.type === "barcode" ? 2 : 1.5;
-    const padY = item.type === "barcode" ? 2 : 1;
+    const padX = item.type === "barcode" ? 2.5 : 2;
+    const padY = item.type === "barcode" ? 2.5 : 1;
 
     const left = metrics.offsetX + item.bbox.x0 * metrics.scale - padX;
     const top = metrics.offsetY + item.bbox.y0 * metrics.scale - padY;
@@ -1306,7 +1461,7 @@ async function triggerPhotoCapture() {
 
   clearPhotoLensState();
   openPhotoLensPanel();
-  setPhotoLensStatus("Auto-fokus & mengambil foto...", false);
+  setPhotoLensStatus("Mengambil foto...", false);
 
   const snapDataUrl = await captureHighResPhotoFromCamera();
   if (snapDataUrl) {

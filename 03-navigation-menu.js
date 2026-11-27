@@ -210,6 +210,9 @@ function openFeatureMenu(feature) {
       scannerViewport.classList.remove("mode-square", "mode-bar");
       scannerViewport.classList.add("mode-full");
     }
+    if (typeof preloadOcrWorker === "function") {
+      preloadOcrWorker();
+    }
     pushAppHistoryState("text-to-qr");
   }
 
@@ -240,6 +243,10 @@ function enterExcelTextPhotoMode() {
   const task = getActiveExcelTask();
   if (appHeaderSubtitle && task) {
     appHeaderSubtitle.textContent = "Arahkan ke teks lalu tekan tombol foto";
+  }
+
+  if (typeof preloadOcrWorker === "function") {
+    preloadOcrWorker();
   }
 
   excelPhotoHistoryDepth = 1;
