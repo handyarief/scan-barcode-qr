@@ -108,39 +108,40 @@
 
 .ocr-word-box {
   position: absolute;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.34);
-  border: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow: none;
   cursor: pointer;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .ocr-barcode-box {
   position: absolute;
-  border-radius: 10px;
-  background: rgba(56, 189, 248, 0.2);
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.16);
   border: 1.5px solid rgba(125, 211, 252, 0.85);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+  box-shadow: none;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .ocr-word-box:hover {
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(255, 255, 255, 0.44);
+  border-color: rgba(255, 255, 255, 0.52);
 }
 
 .ocr-barcode-box:hover {
-  background: rgba(56, 189, 248, 0.32);
+  background: rgba(56, 189, 248, 0.28);
   border-color: #38bdf8;
 }
 
 .ocr-word-box.selected,
 .ocr-barcode-box.selected {
-  background: rgba(66, 133, 244, 0.42);
+  background: rgba(66, 133, 244, 0.36);
   border: 1.5px solid #4285f4;
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  box-shadow: none;
   z-index: 2;
 }
 
