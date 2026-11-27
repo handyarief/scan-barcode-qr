@@ -50,7 +50,7 @@ window.addEventListener("appinstalled", () => {
 // 3. Registrasi Service Worker dengan cache aset lokal & CDN utama (Native Offline Ready)
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    const cacheName = "scan2qr-native-v2";
+    const cacheName = "scan2qr-native-v3";
     const swCode = `
       const CACHE_NAME = "${cacheName}";
       const PRECACHE_URLS = [
